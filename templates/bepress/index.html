@@ -5,6 +5,30 @@
 
 {% block body %}
     <div class="box">
-
+        <p><strong>Note:</strong> to include Bepress exports in this tool's
+            import list they should be added to <code>/path/to/janeway/src/files/bepress/</code>.
+        </p>
+        <form method="POST" action="{% url 'bepress_import' %}">
+            {% csrf_token %}
+            <fieldset class="fieldset">
+                <legend>Import Settings</legend>
+                <label for="pdf_type">Select which file type to create galley from</label>
+                <select name="pdf_type">
+                    <option value="original">Original</option>
+                    <option value="stamped">Stamped</option>
+                </select>
+            <br />
+            <label for="folder">
+                Select where to get source for import
+            </label>
+                {% for folder in folders %}
+                    <input type="radio" name="folder" value="{{ folder }}">
+                    &nbsp;{{ folder }}<br />
+                {% endfor %}
+                <button name="import" class="success button">Import to this
+                    Journal
+                </button>
+            </fieldset>
+        </form>
     </div>
 {% endblock %}

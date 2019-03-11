@@ -1,3 +1,7 @@
+import os
+
+from django.conf import settings
+
 from utils import models
 
 PLUGIN_NAME = 'Bepress Import'
@@ -7,6 +11,8 @@ VERSION = '0.1'
 SHORT_NAME = 'janeway-bepress'
 DISPLAY_NAME = 'bepress'
 MANAGER_URL = 'bepress_index'
+
+BEPRESS_PATH = os.path.join(settings.BASE_DIR, 'files', 'bepress')
 
 
 def get_self(install_plugin=False):
@@ -35,6 +41,8 @@ def install():
         print('Plugin {0} installed.'.format(PLUGIN_NAME))
     else:
         print('Plugin {0} is already installed.'.format(PLUGIN_NAME))
+
+    os.makedirs(BEPRESS_PATH)
 
 
 def hook_registry():
