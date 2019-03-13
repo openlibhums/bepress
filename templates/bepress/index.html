@@ -18,6 +18,14 @@
                     <option value="stamped">Stamped</option>
                 </select>
             <br />
+                <legend>Import Settings</legend>
+                <label for="section_id">Select the default section for imported articles without a discipline </label>
+                <select name="section_id">
+                    {% for section in sections%}
+                    <option value="{{ section.pk }}">{{ section.name }}</option>
+                    {% endfor %}
+                </select>
+            <br />
             <label for="folder">
                 Select where to get source for import
             </label>

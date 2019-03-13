@@ -8,6 +8,7 @@ from django.conf.urls import url
 from plugins.bepress import views
 
 urlpatterns = [
+    url(r'^$', views.index, name='bepress_index'),
     url(r'^index/$', views.index, name='bepress_index'),
     url(r'^import/$', views.import_bepress_articles, name='bepress_import'),
 ]
