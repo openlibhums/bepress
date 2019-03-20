@@ -12,7 +12,8 @@ SHORT_NAME = 'bepress'
 DISPLAY_NAME = 'bepress'
 MANAGER_URL = 'bepress_index'
 
-BEPRESS_PATH = os.path.join(settings.BASE_DIR, 'files', 'bepress')
+BEPRESS_PATH = os.path.join(settings.BASE_DIR, 'files', 'plugins', 'bepress')
+
 
 def get_self(install_plugin=False):
     defaults = {
@@ -44,7 +45,6 @@ def install():
         print('Plugin {0} installed.'.format(PLUGIN_NAME))
     else:
         print('Plugin {0} is already installed.'.format(PLUGIN_NAME))
-
 
 
 def hook_registry():
