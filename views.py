@@ -32,11 +32,13 @@ def import_bepress_articles(request):
         default_section = None
 
     if folder:
-        utils.import_articles(folder, pdf_type, request.journal, default_section)
+        utils.import_articles(
+            folder, pdf_type, request.journal, default_section)
 
-    # TODO: uncomment when development is finished, this allows you to run the
-    # command over without having to make selections repeatedly
-    """
+
+# TODO: uncomment when development is finished, this allows you to run the
+# command over without having to make selections repeatedly
+"""
     return redirect(
         reverse(
             'bepress_index'

@@ -10,7 +10,7 @@ import django.db.models.deletion
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('submission', '0033_auto_20190312_1742'),
+        ('submission', '0032_auto_20190304_0916'),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
         ('bepress', '0002_auto_20190312_1742'),
     ]

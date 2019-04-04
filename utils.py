@@ -100,6 +100,9 @@ def metadata_license(soup, article):
 def metadata_authors(soup, article):
     bepress_authors = [a for a in soup.authors if a.string != "\n"]
     for i, bepress_author in enumerate(bepress_authors):
+        if bepress_author.organization:
+            handle_corporate_author(bepress_author, article)
+            continue
         try:
             email = bepress_author.email.string
         except AttributeError:
@@ -109,7 +112,7 @@ def metadata_authors(soup, article):
             account.first_name = bepress_author.fname.string
         else:
             account.first_name = " "
-        if bepress_author.fname:
+        if bepress_author.lname:
             account.last_name = bepress_author.lname.string
         else:
             account.last_name = " "
@@ -130,6 +133,14 @@ def metadata_authors(soup, article):
         if i == 0:
             article.correspondence_author = account
 
+
+def handle_corporate_author(bepress_author, article):
+    frozen_record = submission_models.FrozenAuthor(
+        article=article,
+        institution=bepress_author.organization.string,
+        is_corporate=True,
+    )
+    frozen_record.save()
 
 def make_dummy_email(author):
     hashed = hashlib.md5(str(author).encode("utf-8")).hexdigest()

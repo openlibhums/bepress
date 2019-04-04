@@ -10,7 +10,7 @@ import django.utils.timezone
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('submission', '0033_auto_20190312_1742'),
+        ('submission', '0032_auto_20190304_0916'),
         ('bepress', '0001_initial'),
     ]
 
