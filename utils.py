@@ -12,11 +12,14 @@ from django.db.utils import OperationalError
 from core import files
 from core.models import Account, Galley
 from submission import models as submission_models
+from journal import models as journal_models
 
 from plugins.bepress import models
 from plugins.bepress.plugin_settings import BEPRESS_PATH
 
 logger = logging.getLogger(__name__)
+
+SECTION_FIELDS = ["track"]
 
 
 def get_bepress_import_folders():
@@ -44,6 +47,44 @@ def soup_metadata(metadata_path):
     logger.debug('Souping article %s' % metadata_path)
     metadata_content = open(metadata_path).read()
     return BeautifulSoup(metadata_content, "lxml")
+
+
+def create_article_record(soup, journal, default_section):
+    imported_article, created = models.ImportedArticle.objects.get_or_create(
+        bepress_id=soup.articleid.string,
+    )
+    if created or not imported_article.article:
+        article = submission_models.Article(is_import=True)
+        logger.info(
+            "Importing new article with bepress id %s"
+            "" % imported_article.bepress_id
+        )
+    else:
+        article = imported_article.article
+        logger.debug(
+            "Updating article %s (bepress id %s)"
+            "" % (article.pk, imported_article.bepress_id)
+        )
+
+    article.title = soup.title.string
+    article.journal = journal
+    article.abstract = str(soup.abstract.string) if soup.abstract else ''
+    article.date_published = getattr(soup, 'publication-date').string
+    article.date_submitted = getattr(soup, 'submission-date').string
+    article.stage = submission_models.STAGE_PUBLISHED
+    metadata_section(soup, article, default_section)
+
+    article.save()
+
+    metadata_keywords(soup, article)
+    metadata_authors(soup, article)
+    metadata_license(soup, article)
+    article.save()
+
+    imported_article.article = article
+    imported_article.save()
+
+    return article
 
 
 def metadata_keywords(soup, article):
@@ -147,44 +188,6 @@ def make_dummy_email(author):
     return "{0}@{1}".format(hashed, settings.DUMMY_EMAIL_DOMAIN)
 
 
-def create_article_record(soup, journal, default_section):
-    imported_article, created = models.ImportedArticle.objects.get_or_create(
-        bepress_id=soup.articleid.string,
-    )
-    if created or not imported_article.article:
-        article = submission_models.Article(is_import=True)
-        logger.info(
-            "Importing new article with bepress id %s"
-            "" % imported_article.bepress_id
-        )
-    else:
-        article = imported_article.article
-        logger.debug(
-            "Updating article %s (bepress id %s)"
-            "" % (article.pk, imported_article.bepress_id)
-        )
-
-    article.title = soup.title.string
-    article.journal = journal
-    article.abstract = str(soup.abstract.string) if soup.abstract else ''
-    article.date_published = getattr(soup, 'publication-date').string
-    article.date_submitted = getattr(soup, 'submission-date').string
-    article.stage = submission_models.STAGE_PUBLISHED
-    metadata_section(soup, article, default_section)
-
-    article.save()
-
-    metadata_keywords(soup, article)
-    metadata_authors(soup, article)
-    metadata_license(soup, article)
-    article.save()
-
-    imported_article.article = article
-    imported_article.save()
-
-    return article
-
-
 def add_pdf_as_galley(pdf_path, article):
     if article.pdfs:
         return
@@ -224,5 +227,49 @@ def import_articles(folder, pdf_type, journal, default_section):
 
             soup = soup_metadata(metadata_path)
             article = create_article_record(soup, journal, default_section)
+            issue = add_to_issue(article, root, path)
             if pdf_path is not None:
                 add_pdf_as_galley(pdf_path, article)
+
+
+def add_to_issue(article, root_path, export_path):
+    """ Adds the new article to the right issue. Issue created if not present
+
+    Bepress exports have roughly this structure:
+     - Journal export:
+         path/to/export/vol{volume_id}/iss{issue_id}/{article_id}/*
+     - Conference export:
+         path/to/export/{year}/*/*
+    :param article: The submission.Article being imported
+    :param root_path: The absolute path in which the metadata.xml was found
+    :param export_path: The absolute path to the provided exported data
+    """
+    relative_path = root_path.replace(export_path, "")
+    year = issue_num = vol_num = None
+    try:
+
+        if article.journal.is_conference:
+            _, year, *remaining = relative_path.split("/")
+        else:
+            _, volume_code, issue_code, article_id = relative_path.split("/")
+            vol_num = int(volume_code.replace("vol", "")) # volN
+            issue_num = int(issue_code.replace("iss", "")) # issN
+    except Exception as e:
+        logger.exception(e)
+        logger.error(
+                "Failed to get issue details for {}, path: {}".format(
+                "conference" if article.journal.is_conference else "journal",
+            )
+        )
+    else:
+        issue, created = journal_models.Issue.objects.get_or_create(
+            journal=article.journal,
+            volume=vol_num,
+            issue=issue_num or year,
+        )
+        if year:
+            issue.date = year
+        issue.articles.add(article)
+        if created:
+            logger.info("Created new issue {}".format(issue))
+        logger.debug("Added to issue {}".format(issue))
