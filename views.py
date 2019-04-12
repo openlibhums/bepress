@@ -25,6 +25,7 @@ def import_bepress_articles(request):
     folder = request.POST.get('folder', None)
     pdf_type = request.POST.get('pdf_type', None)
     section_id = request.POST.get('section_id', None)
+    section_key = request.POST.get('section_key')
     if section_id:
         default_section = get_object_or_404(Section,
                 pk=section_id, journal=request.journal)
@@ -33,7 +34,9 @@ def import_bepress_articles(request):
 
     if folder:
         utils.import_articles(
-            folder, pdf_type, request.journal, default_section)
+            folder, pdf_type, request.journal,
+            default_section, section_key
+        )
 
 
 # TODO: uncomment when development is finished, this allows you to run the

@@ -49,7 +49,7 @@ def soup_metadata(metadata_path):
     return BeautifulSoup(metadata_content, "lxml")
 
 
-def create_article_record(soup, journal, default_section):
+def create_article_record(soup, journal, default_section, section_key):
     imported_article, created = models.ImportedArticle.objects.get_or_create(
         bepress_id=soup.articleid.string,
     )
@@ -72,7 +72,7 @@ def create_article_record(soup, journal, default_section):
     article.date_published = getattr(soup, 'publication-date').string
     article.date_submitted = getattr(soup, 'submission-date').string
     article.stage = submission_models.STAGE_PUBLISHED
-    metadata_section(soup, article, default_section)
+    metadata_section(soup, article, default_section, section_key)
 
     article.save()
 
@@ -98,8 +98,13 @@ def metadata_keywords(soup, article):
             logger.warning("Couldn't add keyword %s: %s" % (keyword, e))
 
 
-def metadata_section(soup, article, default_section):
-    soup_section = soup.discipline.string if soup.discipline else None
+def metadata_section(soup, article, default_section, section_key=None):
+    if section_key:
+        field = soup.fields.find(attrs={"name":section_key})
+        soup_section = field.value.string if field else None
+    else:
+        field = getattr(soup, 'document-type').string
+        soup_section = field.string if field else None
 
     if soup_section:
         section, c = submission_models.Section.objects.language("en")\
@@ -218,7 +223,7 @@ def add_pdf_as_galley(pdf_path, article):
         article.galley_set.add(galley)
 
 
-def import_articles(folder, pdf_type, journal, default_section):
+def import_articles(folder, pdf_type, journal, default_section, section_key):
     path = os.path.join(BEPRESS_PATH, folder)
     for root, dirs, files in os.walk(path):
 
@@ -236,7 +241,8 @@ def import_articles(folder, pdf_type, journal, default_section):
                 pdf_path = None
 
             soup = soup_metadata(metadata_path)
-            article = create_article_record(soup, journal, default_section)
+            article = create_article_record(
+                soup, journal, default_section, section_key)
             issue = add_to_issue(article, root, path)
             if pdf_path is not None:
                 add_pdf_as_galley(pdf_path, article)
@@ -269,6 +275,7 @@ def add_to_issue(article, root_path, export_path):
         logger.error(
                 "Failed to get issue details for {}, path: {}".format(
                 "conference" if article.journal.is_conference else "journal",
+                export_path,
             )
         )
     else:
