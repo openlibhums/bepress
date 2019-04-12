@@ -12,6 +12,15 @@
             {% csrf_token %}
             <fieldset class="fieldset">
                 <legend>Import Settings</legend>
+                {% if request.press and not request.journal %}
+                <label for="journal">Select the target journal/conference</label>
+                <select name="journal_code">
+                    {% for journal in request.press.journals %}
+                    <option value="{{ journal.code }}">{{ journal.name }}</option>
+                    {% endfor %}
+                </select>
+                {% endif %}
+            <br />
                 <label for="pdf_type">Select which file type to create galley from</label>
                 <select name="pdf_type">
                     <option value="original">Original</option>

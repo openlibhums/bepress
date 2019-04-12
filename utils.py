@@ -1,3 +1,4 @@
+import dateutil
 import hashlib
 import logging
 import os
@@ -281,11 +282,11 @@ def add_to_issue(article, root_path, export_path):
     else:
         issue, created = journal_models.Issue.objects.get_or_create(
             journal=article.journal,
-            volume=vol_num,
+            volume=vol_num or 1,
             issue=issue_num or year,
         )
         if year:
-            issue.date = year
+            issue.date = dateutil.parser.parse(year)
         issue.articles.add(article)
         if created:
             logger.info("Created new issue {}".format(issue))
