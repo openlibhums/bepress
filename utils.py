@@ -136,6 +136,16 @@ def metadata_license(soup, article):
                 )
             except submission_models.Licence.DoesNotExist:
                 logging.warning("Unknown license %s" % license_url)
+    else:
+        try:
+            # Default to Copyright
+            article.license = submission_models.Licence.objects.get(
+                    journal=article.journal,
+                    short_name="Copyright",
+            )
+            logging.debug("No license in metadata, defaulting to copyright")
+        except submission_models.Licence.DoesNotExist:
+            logging.warning("No license in metadata")
 
 
 def metadata_authors(soup, article):
