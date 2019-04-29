@@ -1,14 +1,17 @@
+import cgi
 import dateutil
 import hashlib
 import logging
 import os
 from urllib.parse import urlsplit
+from uuid import uuid4
 
 from bs4 import BeautifulSoup
 from django.db import transaction
 from django.conf import settings
-from django.core.files import File as DjangoFile
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db.utils import OperationalError
+import requests
 
 from core import files
 from core.models import Account, Galley
@@ -28,20 +31,6 @@ def get_bepress_import_folders():
         return os.listdir(BEPRESS_PATH)
     else:
         return []
-
-
-def get_pdf(sub_files, pdf_type):
-    galley_filename = None
-
-    if len(sub_files) > 1:
-        if pdf_type == 'stamped':
-            galley_filename = 'stamped.pdf'
-        else:
-            files = set(sub_files) - {"stamped.pdf", "metadata.xml", "auto_convert.pdf"}
-            if files:
-                galley_filename = next(iter(files))
-
-    return galley_filename
 
 
 def soup_metadata(metadata_path):
@@ -204,24 +193,35 @@ def make_dummy_email(author):
     return "{0}@{1}".format(hashed, settings.DUMMY_EMAIL_DOMAIN)
 
 
-def add_pdf_as_galley(pdf_path, article):
+def add_pdf_galley(soup, article, stamped=False):
     if article.pdfs:
         return
 
-    with open(pdf_path, "rb") as f:
-        django_file = DjangoFile(f)
-        saved_file = files.save_file_to_article(django_file, article,
-                owner=None,
-                label="PDF",
-                is_galley=True,
-        )
-        galley = Galley.objects.create(
-                article=article,
-                file=saved_file,
-                type="pdf",
-                label="pdf",
-        )
-        article.galley_set.add(galley)
+    url = getattr(soup, "fulltext-url").string
+    if url:
+        response = requests.get(url, stream=True)
+        if response.status_code != 200:
+            logging.error("Error fetching galley: %s", response.status_code)
+        else:
+            import pdb;pdb.set_trace()
+            filename = get_filename_from_headers(response)
+            django_file = SimpleUploadedFile(
+                filename,
+                response.content,
+                "application/pdf",
+            )
+            saved_file = files.save_file_to_article(django_file, article,
+                    owner=None,
+                    label="PDF",
+                    is_galley=True,
+            )
+            galley = Galley.objects.create(
+                    article=article,
+                    file=saved_file,
+                    type="pdf",
+                    label="pdf",
+            )
+            article.galley_set.add(galley)
 
 
 def import_articles(folder, pdf_type, journal, default_section, section_key):
@@ -229,24 +229,14 @@ def import_articles(folder, pdf_type, journal, default_section, section_key):
     for root, dirs, files in os.walk(path):
 
         if 'metadata.xml' in files:
-            pdf = get_pdf(files, pdf_type)
-
-            if not pdf and 'stamped.pdf' in files:
-                pdf = 'stamped.pdf'
 
             metadata_path = os.path.join(root, 'metadata.xml')
-
-            if pdf:
-                pdf_path = os.path.join(root, pdf)
-            else:
-                pdf_path = None
 
             soup = soup_metadata(metadata_path)
             article = create_article_record(
                 soup, journal, default_section, section_key)
             issue = add_to_issue(article, root, path)
-            if pdf_path is not None:
-                add_pdf_as_galley(pdf_path, article)
+            add_pdf_galley(soup, article)
 
 
 def add_to_issue(article, root_path, export_path):
@@ -291,3 +281,16 @@ def add_to_issue(article, root_path, export_path):
         if created:
             logger.info("Created new issue {}".format(issue))
         logger.debug("Added to issue {}".format(issue))
+
+
+def get_filename_from_headers(response):
+    try:
+        header = response.headers["Content-Disposition"]
+        _, params = cgi.parse_header(header)
+        return params["filename"]
+    except Exception as e:
+        logger.warning(
+            "No filename available in headers, will autogenerate one: %s"
+            "" % e
+        )
+        return '{uuid}.pdf'.format(uuid=uuid4())
