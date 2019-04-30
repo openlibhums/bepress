@@ -200,6 +200,8 @@ def add_pdf_galley(soup, article, stamped=False):
 
     url = getattr(soup, "fulltext-url").string
     if url:
+        if stamped:
+            url = url.replace("unstamped=1", "unstamped=0")
         response = requests.get(url, stream=True)
         if response.status_code != 200:
             logging.error("Error fetching galley: %s", response.status_code)
