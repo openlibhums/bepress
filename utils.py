@@ -42,6 +42,7 @@ def soup_metadata(metadata_path):
 def create_article_record(soup, journal, default_section, section_key):
     imported_article, created = models.ImportedArticle.objects.get_or_create(
         bepress_id=soup.articleid.string,
+        journal=journal,
     )
     if created or not imported_article.article:
         article = submission_models.Article(is_import=True)

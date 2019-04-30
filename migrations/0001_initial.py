@@ -21,6 +21,7 @@ class Migration(migrations.Migration):
                 ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
                 ('bepress_id', models.BigIntegerField()),
                 ('article', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='submission.Article')),
+                ('journal', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='journal.Journal')),
             ],
         ),
     ]

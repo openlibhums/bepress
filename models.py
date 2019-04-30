@@ -5,6 +5,7 @@ from django.utils import timezone
 class ImportedArticle(models.Model):
     article = models.ForeignKey('submission.Article', blank=True, null=True)
     bepress_id = models.BigIntegerField()
+    journal = models.ForeignKey('journal.Journal')
     started = models.DateTimeField(default=timezone.now)
 
 
