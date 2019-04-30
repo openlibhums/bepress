@@ -226,7 +226,7 @@ def add_pdf_galley(soup, article, stamped=False):
             article.galley_set.add(galley)
 
 
-def import_articles(folder, pdf_type, journal, default_section, section_key):
+def import_articles(folder, stamped, journal, default_section, section_key):
     path = os.path.join(BEPRESS_PATH, folder)
     for root, dirs, files in os.walk(path):
 
@@ -238,7 +238,7 @@ def import_articles(folder, pdf_type, journal, default_section, section_key):
             article = create_article_record(
                 soup, journal, default_section, section_key)
             issue = add_to_issue(article, root, path)
-            add_pdf_galley(soup, article)
+            add_pdf_galley(soup, article, stamped)
 
 
 def add_to_issue(article, root_path, export_path):

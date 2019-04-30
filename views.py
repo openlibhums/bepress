@@ -40,8 +40,9 @@ def import_bepress_articles(request):
         default_section = None
 
     if folder:
+        stamped = pdf_type == "stamped"
         utils.import_articles(
-            folder, pdf_type, journal,
+            folder, stamped, journal,
             default_section, section_key,
         )
 
