@@ -204,7 +204,6 @@ def add_pdf_galley(soup, article, stamped=False):
         if response.status_code != 200:
             logging.error("Error fetching galley: %s", response.status_code)
         else:
-            import pdb;pdb.set_trace()
             filename = get_filename_from_headers(response)
             django_file = SimpleUploadedFile(
                 filename,
