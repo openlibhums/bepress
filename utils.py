@@ -7,7 +7,6 @@ from urllib.parse import urlsplit
 from uuid import uuid4
 
 from bs4 import BeautifulSoup
-from django.db import transaction
 from django.conf import settings
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db.utils import OperationalError
@@ -83,7 +82,8 @@ def metadata_keywords(soup, article):
 
     for keyword in keywords:
         try:
-            word, _ = submission_models.Keyword.objects.get_or_create(word=keyword)
+            word, _ = submission_models.Keyword.objects.get_or_create(
+                word=keyword)
             article.keywords.add(word)
         except OperationalError as e:
             logger.warning("Couldn't add keyword %s: %s" % (keyword, e))
@@ -91,7 +91,7 @@ def metadata_keywords(soup, article):
 
 def metadata_section(soup, article, default_section, section_key=None):
     if section_key:
-        field = soup.fields.find(attrs={"name":section_key})
+        field = soup.fields.find(attrs={"name": section_key})
         soup_section = field.value.string if field else None
     else:
         field = getattr(soup, 'document-type').string
@@ -107,11 +107,12 @@ def metadata_section(soup, article, default_section, section_key=None):
     elif default_section:
         article.section = default_section
     else:
-        logger.warning('{article} no section found'.format(article=article.title))
+        logger.warning(
+            '{article} no section found'.format(article=article.title))
 
 
 def metadata_license(soup, article):
-    field = soup.fields.find(attrs={"name":"distribution_license"})
+    field = soup.fields.find(attrs={"name": "distribution_license"})
     if field:
         license_url = field.value.string
         if license_url.endswith("/"):
@@ -212,7 +213,8 @@ def add_pdf_galley(soup, article, stamped=False):
                 response.content,
                 "application/pdf",
             )
-            saved_file = files.save_file_to_article(django_file, article,
+            saved_file = files.save_file_to_article(
+                    django_file, article,
                     owner=None,
                     label="PDF",
                     is_galley=True,
@@ -228,17 +230,23 @@ def add_pdf_galley(soup, article, stamped=False):
 
 def import_articles(folder, stamped, journal, default_section, section_key):
     path = os.path.join(BEPRESS_PATH, folder)
-    for root, dirs, files in os.walk(path):
+    for root, dirs, files_ in os.walk(path):
 
-        if 'metadata.xml' in files:
+        if 'metadata.xml' in files_:
 
             metadata_path = os.path.join(root, 'metadata.xml')
 
             soup = soup_metadata(metadata_path)
-            article = create_article_record(
-                soup, journal, default_section, section_key)
-            issue = add_to_issue(article, root, path)
-            add_pdf_galley(soup, article, stamped)
+            try:
+                getattr(soup, "fulltext-url").string
+            except AttributeError:
+                # Eearly return if there is no galley
+                continue
+            else:
+                article = create_article_record(
+                    soup, journal, default_section, section_key)
+                add_to_issue(article, root, path)
+                add_pdf_galley(soup, article, stamped)
 
 
 def add_to_issue(article, root_path, export_path):
