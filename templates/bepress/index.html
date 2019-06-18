@@ -21,6 +21,15 @@
                 </select>
                 {% endif %}
             <br />
+                <label for="bepress_structure">
+                    Select the <a target="_blank" href="https://www.bepress.com/reference_guide_dc/digital-commons-structures/">strucuture</a> of the content being imported
+                </label>
+                <select name="bepress_structure">
+                    <option value="series">Series</option>
+                    <option value="journal">Journal</option>
+                    <option value="events">Events (Conferences)</option>
+                </select>
+            <br />
                 <label for="pdf_type">Select which file type to create galley from</label>
                 <select name="pdf_type">
                     <option value="original">Original</option>

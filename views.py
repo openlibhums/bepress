@@ -4,6 +4,7 @@ from django.views.decorators.http import require_POST
 from journal.models import Journal
 from submission.models import Section
 
+from plugins.bepress import const
 from plugins.bepress import utils
 
 
@@ -24,6 +25,7 @@ def index(request):
 @require_POST
 def import_bepress_articles(request):
     folder = request.POST.get('folder', None)
+    struct = request.POST.get('bepress_structure')
     pdf_type = request.POST.get('pdf_type', None)
     section_id = request.POST.get('section_id', None)
     section_key = request.POST.get('section_key')
@@ -43,7 +45,7 @@ def import_bepress_articles(request):
         stamped = pdf_type == "stamped"
         utils.import_articles(
             folder, stamped, journal,
-            default_section, section_key,
+            struct, default_section, section_key,
         )
 
 
