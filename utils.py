@@ -17,6 +17,7 @@ from core.models import Account, Galley
 from submission import models as submission_models
 from journal import models as journal_models
 
+from plugins.bepress import const
 from plugins.bepress import models
 from plugins.bepress.plugin_settings import BEPRESS_PATH
 
@@ -228,7 +229,7 @@ def add_pdf_galley(soup, article, stamped=False):
             article.galley_set.add(galley)
 
 
-def import_articles(folder, stamped, journal, default_section, section_key):
+def import_articles(folder, stamped, journal, struct, default_section, section_key):
     path = os.path.join(BEPRESS_PATH, folder)
     for root, dirs, files_ in os.walk(path):
 
@@ -245,11 +246,14 @@ def import_articles(folder, stamped, journal, default_section, section_key):
             else:
                 article = create_article_record(
                     soup, journal, default_section, section_key)
-                add_to_issue(article, root, path)
+
+                #Query the article to ensure correct attribute types
+                article = submission_models.Article.objects.get(pk=article.pk)
+                add_to_issue(article, root, path, struct)
                 add_pdf_galley(soup, article, stamped)
 
 
-def add_to_issue(article, root_path, export_path):
+def add_to_issue(article, root_path, export_path, struct):
     """ Adds the new article to the right issue. Issue created if not present
 
     Bepress exports have roughly this structure:
@@ -257,20 +261,24 @@ def add_to_issue(article, root_path, export_path):
          path/to/export/vol{volume_id}/iss{issue_id}/{article_id}/*
      - Conference export:
          path/to/export/{year}/*/*
-    :param article: The submission.Article being imported
+         :param article: The submission.Article being imported
     :param root_path: The absolute path in which the metadata.xml was found
     :param export_path: The absolute path to the provided exported data
+    :param struct: (str) One of const.BEPRESS_STRUCTURES
     """
     relative_path = root_path.replace(export_path, "")
     year = issue_num = vol_num = None
     try:
-
-        if article.journal.is_conference:
+        if struct == const.EVENTS_STRUCTURE:
             _, year, *remaining = relative_path.split("/")
-        else:
+        elif struct == const.JOURNAL_STRUCTURE:
             _, volume_code, issue_code, article_id = relative_path.split("/")
             vol_num = int(volume_code.replace("vol", "")) # volN
             issue_num = int(issue_code.replace("iss", "")) # issN
+        elif struct == const.SERIES_STRUCTURE:
+            year = vol_num = str(article.date_published.year - 1)
+        else:
+            raise RuntimeError("Unkown bepress structure %s" % struct)
     except Exception as e:
         logger.exception(e)
         logger.error(
