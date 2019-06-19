@@ -231,6 +231,8 @@ def add_pdf_galley(soup, article, stamped=False):
 
 def import_articles(folder, stamped, journal, struct, default_section, section_key):
     path = os.path.join(BEPRESS_PATH, folder)
+    imported = 0
+    ignored = 0
     for root, dirs, files_ in os.walk(path):
 
         if 'metadata.xml' in files_:
@@ -242,6 +244,8 @@ def import_articles(folder, stamped, journal, struct, default_section, section_k
                 getattr(soup, "fulltext-url").string
             except AttributeError:
                 # Eearly return if there is no galley
+                logger.info("No fulltext-url for {}".format(metadata_path))
+                ignored += 1
                 continue
             else:
                 article = create_article_record(
@@ -251,6 +255,11 @@ def import_articles(folder, stamped, journal, struct, default_section, section_k
                 article = submission_models.Article.objects.get(pk=article.pk)
                 add_to_issue(article, root, path, struct)
                 add_pdf_galley(soup, article, stamped)
+                imported +=1
+
+        else:
+            ignored +=1
+    logger.info("Import completed: %d imported | %d ignored" % (imported, ignored))
 
 
 def add_to_issue(article, root_path, export_path, struct):
