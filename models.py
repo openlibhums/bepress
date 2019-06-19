@@ -3,6 +3,7 @@ from django.utils import timezone
 
 
 class ImportedArticle(models.Model):
+    dump_name = models.CharField(max_length=255, blank=True, null=True)
     article = models.ForeignKey('submission.Article', blank=True, null=True)
     bepress_id = models.BigIntegerField()
     journal = models.ForeignKey('journal.Journal')
@@ -11,7 +12,7 @@ class ImportedArticle(models.Model):
 
     class Meta:
         unique_together = (
-                ("article", "bepress_id"),
+                ("article", "bepress_id", "dump_name"),
         )
 
 class ImportedArticleAuthor(models.Model):
