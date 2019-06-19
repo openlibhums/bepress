@@ -8,6 +8,7 @@ from uuid import uuid4
 
 from bs4 import BeautifulSoup
 from django.conf import settings
+from django.core.files import File as DjangoFile
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db.utils import OperationalError
 import requests
@@ -39,8 +40,9 @@ def soup_metadata(metadata_path):
     return BeautifulSoup(metadata_content, "lxml")
 
 
-def create_article_record(soup, journal, default_section, section_key):
+def create_article_record(dump_name, soup, journal, default_section, section_key):
     imported_article, created = models.ImportedArticle.objects.get_or_create(
+        dump_name=dump_name,
         bepress_id=soup.articleid.string,
         journal=journal,
     )
@@ -133,7 +135,7 @@ def metadata_license(soup, article):
                         url=split.geturl(),
                 )
             except submission_models.Licence.DoesNotExist:
-                logging.warning("Unknown license %s" % license_url)
+                logger.warning("Unknown license %s" % license_url)
     else:
         try:
             # Default to Copyright
@@ -141,9 +143,9 @@ def metadata_license(soup, article):
                     journal=article.journal,
                     short_name="Copyright",
             )
-            logging.debug("No license in metadata, defaulting to copyright")
+            logger.debug("No license in metadata, defaulting to copyright")
         except submission_models.Licence.DoesNotExist:
-            logging.warning("No license in metadata")
+            logger.warning("No license in metadata")
 
 
 def metadata_authors(soup, article):
@@ -191,22 +193,20 @@ def handle_corporate_author(bepress_author, article):
     )
     frozen_record.save()
 
+
 def make_dummy_email(author):
     hashed = hashlib.md5(str(author).encode("utf-8")).hexdigest()
     return "{0}@{1}".format(hashed, settings.DUMMY_EMAIL_DOMAIN)
 
 
-def add_pdf_galley(soup, article, stamped=False):
-    if article.pdfs:
-        return
-
+def fetch_remote_galley(soup, stamped=False):
     url = getattr(soup, "fulltext-url").string
     if url:
         if stamped:
             url = url.replace("unstamped=1", "unstamped=0")
         response = requests.get(url, stream=True)
         if response.status_code != 200:
-            logging.error("Error fetching galley: %s", response.status_code)
+            logger.error("Error fetching galley: %s", response.status_code)
         else:
             filename = get_filename_from_headers(response)
             django_file = SimpleUploadedFile(
@@ -214,53 +214,62 @@ def add_pdf_galley(soup, article, stamped=False):
                 response.content,
                 "application/pdf",
             )
-            saved_file = files.save_file_to_article(
-                    django_file, article,
-                    owner=None,
-                    label="PDF",
-                    is_galley=True,
-            )
-            galley = Galley.objects.create(
-                    article=article,
-                    file=saved_file,
-                    type="pdf",
-                    label="pdf",
-            )
-            article.galley_set.add(galley)
+            return django_file
+
+    return None
+
+def add_pdf_galley(pdf_file, article):
+    if article.pdfs:
+        return
+
+    saved_file = files.save_file_to_article(
+            pdf_file, article,
+            owner=None,
+            label="PDF",
+            is_galley=True,
+    )
+    galley = Galley.objects.create(
+            article=article,
+            file=saved_file,
+            type="pdf",
+            label="pdf",
+    )
+    article.galley_set.add(galley)
 
 
 def import_articles(folder, stamped, journal, struct, default_section, section_key):
     path = os.path.join(BEPRESS_PATH, folder)
-    imported = 0
-    ignored = 0
     for root, dirs, files_ in os.walk(path):
 
         if 'metadata.xml' in files_:
-
             metadata_path = os.path.join(root, 'metadata.xml')
 
             soup = soup_metadata(metadata_path)
             try:
-                getattr(soup, "fulltext-url").string
+                pdf_file = fetch_remote_galley(soup, stamped)
             except AttributeError:
-                # Eearly return if there is no galley
-                logger.info("No fulltext-url for {}".format(metadata_path))
-                ignored += 1
-                continue
-            else:
-                article = create_article_record(
-                    soup, journal, default_section, section_key)
+                pdf_file = fetch_local_galley(root, files_, stamped)
 
-                #Query the article to ensure correct attribute types
-                article = submission_models.Article.objects.get(pk=article.pk)
-                add_to_issue(article, root, path, struct)
-                add_pdf_galley(soup, article, stamped)
-                imported +=1
+            article = create_article_record(
+                folder, soup, journal, default_section, section_key)
 
-        else:
-            ignored +=1
-    logger.info("Import completed: %d imported | %d ignored" % (imported, ignored))
+            #Query the article to ensure correct attribute types
+            article = submission_models.Article.objects.get(pk=article.pk)
+            add_to_issue(article, root, path, struct)
+            if pdf_file:
+                add_pdf_galley(pdf_file, article)
 
+
+def fetch_local_galley(root_path, sub_files, stamped):
+    filename = get_filename_from_local(sub_files, stamped)
+
+    if filename:
+        pdf_path = os.path.join(root_path, filename)
+
+        f = open(pdf_path, "rb")
+        return DjangoFile(f)
+    else:
+        return None
 
 def add_to_issue(article, root_path, export_path, struct):
     """ Adds the new article to the right issue. Issue created if not present
@@ -308,6 +317,28 @@ def add_to_issue(article, root_path, export_path, struct):
         if created:
             logger.info("Created new issue {}".format(issue))
         logger.debug("Added to issue {}".format(issue))
+
+
+def get_filename_from_local(sub_files, stamped=False):
+    galley_filename = None
+
+    if len(sub_files) > 1:
+        if stamped:
+            if 'stamped.pdf' in sub_files:
+                galley_filename = 'stamped.pdf'
+            else:
+                stamped = False
+                galley_filename = get_filename_from_local(sub_files, pdf_type)
+        else:
+            candidates = [
+                f for f in sub_files
+                if f not in {"stamped.pdf", "metadata.xml", "auto_convert.pdf"}
+                or not f.endswith("pdf")
+            ]
+            if candidates:
+                galley_filename = candidates[0]
+
+    return galley_filename
 
 
 def get_filename_from_headers(response):
