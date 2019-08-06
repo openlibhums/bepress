@@ -311,11 +311,18 @@ def add_to_issue(article, root_path, export_path, struct):
             volume=vol_num or 1,
             issue=issue_num or year,
         )
+        if created:
+            issue_type = journal_models.IssueType.get(
+                code="issue", journal=article.journal)
+            issue.issue_type = issue_type
+            issue.save()
+            logger.info("Created new issue {}".format(issue))
+
         if year:
             issue.date = dateutil.parser.parse(year)
         issue.articles.add(article)
-        if created:
-            logger.info("Created new issue {}".format(issue))
+        article.primary_issue = issue
+        article.save()
         logger.debug("Added to issue {}".format(issue))
 
 
