@@ -6,8 +6,8 @@ from utils import models
 
 PLUGIN_NAME = 'Bepress Import'
 DESCRIPTION = 'Plugin for importing bepress content to Janeway.'
-AUTHOR = 'Andy Byers'
-VERSION = '0.1'
+AUTHOR = 'Birkbeck Centre for Technology and Publishing'
+VERSION = '1.0'
 SHORT_NAME = 'bepress'
 DISPLAY_NAME = 'bepress'
 MANAGER_URL = 'bepress_index'
