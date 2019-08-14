@@ -43,6 +43,14 @@
                     {% endfor %}
                 </select>
             <br />
+                <label for="issue_id">Optinally, override the issue details on the export and load all the content into this issue:</label>
+                <select name="issue_id">
+                    <option value="">-----------</option>
+                    {% for issue in issues %}
+                    <option value="{{ issue.pk }}">{{ issue }}</option>
+                    {% endfor %}
+                </select>
+            <br />
             <label for="section_key">If your export uses a custom key to denote the section, provide it here</label>
             <input type="text" name="section_key">
             <label for="folder">

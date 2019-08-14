@@ -237,7 +237,7 @@ def add_pdf_galley(pdf_file, article):
     article.galley_set.add(galley)
 
 
-def import_articles(folder, stamped, journal, struct, default_section, section_key):
+def import_articles(folder, stamped, journal, struct, default_section, default_issue, section_key):
     path = os.path.join(BEPRESS_PATH, folder)
     for root, dirs, files_ in os.walk(path):
 
@@ -255,7 +255,7 @@ def import_articles(folder, stamped, journal, struct, default_section, section_k
 
             #Query the article to ensure correct attribute types
             article = submission_models.Article.objects.get(pk=article.pk)
-            add_to_issue(article, root, path, struct)
+            add_to_issue(article, root, path, struct, default_issue)
             if pdf_file:
                 add_pdf_galley(pdf_file, article)
 
@@ -271,7 +271,7 @@ def fetch_local_galley(root_path, sub_files, stamped):
     else:
         return None
 
-def add_to_issue(article, root_path, export_path, struct):
+def add_to_issue(article, root_path, export_path, struct, default_issue=None):
     """ Adds the new article to the right issue. Issue created if not present
 
     Bepress exports have roughly this structure:
@@ -283,7 +283,12 @@ def add_to_issue(article, root_path, export_path, struct):
     :param root_path: The absolute path in which the metadata.xml was found
     :param export_path: The absolute path to the provided exported data
     :param struct: (str) One of const.BEPRESS_STRUCTURES
+    :param (Issue) default_issue: Ignore logic and add to the passed issue
     """
+    if default_issue:
+        default_issue.articles.add(article)
+        article.primary_issue = default_issue
+        return
     relative_path = root_path.replace(export_path, "")
     year = issue_num = vol_num = None
     try:

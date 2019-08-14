@@ -1,7 +1,7 @@
 from django.shortcuts import render, redirect, reverse, get_object_or_404
 from django.views.decorators.http import require_POST
 
-from journal.models import Journal
+from journal.models import Journal, Issue
 from submission.models import Section
 
 from plugins.bepress import const
@@ -12,11 +12,13 @@ def index(request):
 
     folders = utils.get_bepress_import_folders()
     sections = Section.objects.filter(journal=request.journal)
+    issues = Issue.objects.filter(journal=request.journal)
 
     template = 'bepress/index.html'
     context = {
         'folders': folders,
-        'sections': sections
+        'sections': sections,
+        'issues': issues,
     }
 
     return render(request, template, context)
@@ -29,6 +31,8 @@ def import_bepress_articles(request):
     pdf_type = request.POST.get('pdf_type', None)
     section_id = request.POST.get('section_id', None)
     section_key = request.POST.get('section_key')
+    issue_id = request.POST.get('issue_id', None)
+
     if request.journal:
         journal = request.journal
     else:
@@ -41,11 +45,18 @@ def import_bepress_articles(request):
     else:
         default_section = None
 
+    if issue_id:
+        default_issue = get_object_or_404(Issue,
+                pk=issue_id, journal=request.journal)
+    else:
+        default_issue = None
+
     if folder:
         stamped = pdf_type == "stamped"
         utils.import_articles(
             folder, stamped, journal,
-            struct, default_section, section_key,
+            struct, default_section, default_issue,
+            section_key,
         )
 
 
