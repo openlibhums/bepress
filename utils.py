@@ -173,6 +173,11 @@ def metadata_authors(soup, article):
             account.middle_name = bepress_author.mname.string
 
         account.save()
+        author_order, created = submission_models.ArticleAuthorOrder \
+            .objects.get_or_create(article=article, author=account)
+        if created:
+            author_order.order = i
+            author_order.save()
 
         account.snapshot_self(article)
 
