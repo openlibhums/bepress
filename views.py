@@ -1,11 +1,19 @@
+import csv
+from io import TextIOWrapper
+
 from django.shortcuts import render, redirect, reverse, get_object_or_404
 from django.views.decorators.http import require_POST
+from django.contrib import messages
 
+from core import forms as core_forms
 from journal.models import Journal
 from submission.models import Section
 
 from plugins.bepress import const
 from plugins.bepress import utils
+from plugins.bepress import csv_handler
+
+CSV_MIMETYPES = ["application/csv", "text/csv"]
 
 
 def index(request):
@@ -19,6 +27,33 @@ def index(request):
         'sections': sections
     }
 
+    return render(request, template, context)
+
+
+def import_bepress_csv(request):
+    form = core_forms.FileUploadForm(mimetypes=CSV_MIMETYPES)
+    if request.FILES and 'file' in request.FILES:
+        form = core_forms.FileUploadForm(
+            request.POST, request.FILES,
+            mimetypes=CSV_MIMETYPES,
+        )
+        if form.is_valid():
+            file_ = TextIOWrapper(request.FILES['file'].file, encoding="utf-8")
+            reader = csv.DictReader(file_)
+            csv_handler.csv_to_xml(reader)
+
+            messages.add_message(
+                request, messages.SUCCESS,
+                "CSV File Uploaded",
+            )
+        else:
+            messages.add_message(
+                request, messages.ERROR,
+                "Invalid file",
+            )
+
+    template = 'bepress/csv_import.html'
+    context = {"form": form}
     return render(request, template, context)
 
 
