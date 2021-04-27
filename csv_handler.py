@@ -67,3 +67,39 @@ def parse_authors(row):
             # If author is blank, no point checking the next indexes
             break
     return authors
+
+
+def get_fulltext_url(row, unstamped=True, scrape=True):
+    """ Parse the given Bepress CSV Row and retrieve the fulltext PDF url
+    If no fulltext url is found, we try to scrape it from the article page
+    :param row: Dict of a CSV Row:
+    :param row: (bool) Return URL to the stamped version of the PDF
+    :param row: (bool) Attempt to scrape fulltext URL from remote article
+    :return: URL of the fulltext file
+    """
+    url = row.get("fulltext_url")
+    if not url and scrape and row.get("calc_url"):
+        try:
+            logger.info("Fetching article from %s", row["calc_url"])
+            response = requests.get(row["calc_url"])
+        except requests.exceptions.RequestException as exc:
+            logger.warning("Failed to extract PDF URL: %s", exc)
+        else:
+            if response.ok:
+                soup = BeautifulSoup(response.text, "html.parser")
+                anchor_tag = soup.find("a", id="pdf")
+                if anchor_tag:
+                    url = anchor_tag.attrs["href"]
+                    logger.debug("Extracted fulltext url %s", url)
+                else:
+                    logger.warning("No fulltext url found")
+
+    if url and unstamped:
+        if "?" in url:
+            url += "&unstamped=1"
+        else:
+            url += "?unstamped=1"
+    if not url:
+        import pdb;pdb.set_trace()
+
+    return url
