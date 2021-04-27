@@ -1,0 +1,76 @@
+<?xml version='1.0' encoding='iso-8859-1' ?>
+<documents>
+    <document>
+        <title>{{ article.title }}</title>
+        <publication-date>{{ article.publication_date }}</publication-date>
+        <state>published</state>
+        <authors>
+            {% for author in article.authors %}
+            <author>
+              {% if author.is_corporate %}
+                <organization>{{ author.institution }}</organization>
+              {% elif author.institution %}
+                <institution>{{ author.institution }}</institution>
+              {% endif %}
+              {% if author.first_name %}
+                <fname>{{ author.first_name }}</fname>
+              {% endif %}
+              {% if author.middle_name %}
+                <mname>{{ author.middle_name }}</mname>
+              {% endif %}
+              {% if author.last_name %}
+                <lname>{{ author.last_name }}</lname>
+              {% endif %}
+              {% if author.email %}
+                <email>{{ author.email }}</email>
+              {% endif %}
+            </author>
+          {% endfor %}
+        </authors>
+        <disciplines>
+          {% for keyword in article.keywords %}
+            <discipline>{{ keyword }}</discipline>
+          {% endfor %}
+        </disciplines
+        <abstract>{{ article.abstract }}</abstract>
+        <coverpage-url>{{ article.calc_url }}</coverpage-url>
+        <fulltext-url>{{ article.fulltext_url }}</fulltext-url>
+        <document-type>{{ article.document_type }}</document-type>
+        <type>article</type>
+        <articleid>{{ article.article_id }}</articleid>
+        <context-key>{{ article.context_key }}</context-key>
+        <submission-path>{{ article.submission_path }}</submission-path>
+        <fields>
+        {% if article.fpage %}
+        <field name="fpage" type="string">
+            <value>{{ article.fpage }}</value>
+        </field>
+        {% endif %}
+        {% if article.doi %}
+        <field name="doi" type="string">
+            <value>{{ article.doi }}</value>
+        </field>
+        {% endif %}
+        {% if article.language %}
+        <field name="language" type="string">
+            <value>{{ article.language }}</value>
+        </field>
+        {% endif %}
+        {% if article.license_url %}
+        <field name="distribution_license" type="string">
+            <value>{{ article.license_url }}</value>
+        </field>
+        {% endif %}
+        {% if article.peer_reviewed %}
+        <field name="peer_reviewed" type="boolean">
+            <value>true</value>
+        </field>
+        {% endif %}
+        {% if article.publication_date %}
+        <field name="publication_date" type="date">
+            <value>{{ article.publication_date }}</value>
+        </field>
+        {% endif %}
+        </fields>
+    </document>
+</documents>
