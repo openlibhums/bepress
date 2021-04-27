@@ -38,7 +38,8 @@ def import_bepress_csv(request):
             mimetypes=CSV_MIMETYPES,
         )
         if form.is_valid():
-            file_ = TextIOWrapper(request.FILES['file'].file, encoding="utf-8")
+            file_ = TextIOWrapper(
+                request.FILES['file'].file, encoding="utf-8-sig")
             reader = csv.DictReader(file_)
             csv_handler.csv_to_xml(reader)
 
