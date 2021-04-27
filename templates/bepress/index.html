@@ -8,12 +8,12 @@
         <p><strong>Note:</strong> to include Bepress exports in this tool's
             import list they should be added to <code>/path/to/janeway/src/files/plugins/bepress/</code>.
         </p>
-        <p>If you don't have a access to a bepress archive, you can generate one from a batch spreadsheet instead.
-        </p>
+        <p>If you don't have a access to a Bepress archive, you can generate one from a batch CSV instead</p>
+        <a class="button small" href="{% url 'bepress_csv_import' %}">Start CSV Import</a>
         <form method="POST" action="{% url 'bepress_import' %}">
             {% csrf_token %}
             <fieldset class="fieldset">
-                <legend>Import Settings</legend>
+                <legend>Import from Bepress Archive</legend>
                 {% if request.press and not request.journal %}
                 <label for="journal">Select the target journal/conference</label>
                 <select name="journal_code">
