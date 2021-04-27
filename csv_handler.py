@@ -1,5 +1,24 @@
+"""
+Collection of functions for handling of a bepress CSV
+
+Missing Metadata:
+ - DOI
+ - Submission Date
+ - Metadata
+
+
+"""
+import pathlib
+
+from bs4 import BeautifulSoup
+import requests
 from django.template.loader import render_to_string
-import os
+from utils.logger import get_logger
+
+from plugins.bepress.plugin_settings import BEPRESS_PATH
+
+logger = get_logger(__name__)
+
 
 AUTHOR_FIELDS_MAP = {
     ('author%d_fname', 'first_name'),
@@ -22,27 +41,47 @@ def csv_to_xml(reader, commit=True):
     for row in reader:
         parsed = parse_row(row)
         xml = render_xml(parsed)
-        print(xml)
+        id = row.get("article_id") or row["context_key"]
+        file_path = pathlib.Path(BEPRESS_PATH, row["issue"], id, "metadata.xml")
+        if commit:
+            logger.info("Writing to %s", file_path)
+            file_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(str(file_path), "w") as xml_file:
+                xml_file.write(xml)
+        else:
+            print(xml)
 
 
 def render_xml(parsed):
+    """Render Bepress XML metadata from the given context
+    :param parsed: Dict representation of an article's metadata
+    :return: A rendered django Template of the metadata in XML format
+    """
     template = 'bepress/xml/metadata.xml'
     context = {"article": parsed}
     return render_to_string(template, context)
 
 
 def parse_row(row):
+    """Parse the given Bepress CSV Row data into a dictionary
+    :param row: Dict of a CSV Row:
+    :return: Dict of the parsed data
+    """
     article_dict = parse_article_metadata(row)
     article_dict["authors"] = parse_authors(row)
     return article_dict
 
 
 def parse_article_metadata(row):
+    """Parse the given Bepress CSV Row data into a dictionary
+    :param row: Dict of a CSV Row:
+    :return: Dict of the parsed article metadata
+    """
     return dict(
         row,
-        keywords=row['disciplines'].split(),
-        pdf_url=row['fulltext_url'],  # TODO: Try to fetch from article page
-        article_id=row['context_key'],  # TODO: Try to parse from url
+        keywords=row['disciplines'].split(";"),
+        fulltext_url=get_fulltext_url(row),
+        article_id=row['context_key'],
         language=row.get('language', 'en'),
         peer_reviewed=row.get('peer_reviewed', False),
     )
@@ -53,6 +92,8 @@ def parse_authors(row):
     The bepress CSV exposes all authors in a single row, by adding an
     index to each column (e.g author1_fname, author2_fname). The indexes
     range from 1 to 5 and are present even with blank
+    :param row: Dict of a CSV Row:
+    :return: Dict of the parsed author metadata
     """
     authors = []
     for author_index in range(1,6):
@@ -99,7 +140,5 @@ def get_fulltext_url(row, unstamped=True, scrape=True):
             url += "&unstamped=1"
         else:
             url += "?unstamped=1"
-    if not url:
-        import pdb;pdb.set_trace()
 
     return url
