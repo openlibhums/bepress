@@ -11,4 +11,5 @@ urlpatterns = [
     url(r'^$', views.index, name='bepress_index'),
     url(r'^index/$', views.index, name='bepress_index'),
     url(r'^import/$', views.import_bepress_articles, name='bepress_import'),
+    url(r'^csv_import/$', views.import_bepress_csv, name='bepress_csv_import'),
 ]

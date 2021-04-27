@@ -1,0 +1,21 @@
+{% extends "admin/core/base.html" %}
+{% load foundation %}
+
+{% block title %}Bepress Import{% endblock %}
+{% block title-section %}Import Bepress Archive{% endblock %}
+
+{% block body %}
+    <div class="box">
+        <p> This form allows you to transform a CSV export of a Bepress journal into an Bepress archive of metadata files that you will be able to import into Janeway.</p>
+        <p> If you want to learn how you can obtain a CSV export of your Bepress journal you can check the
+        <a target="_blank" href="https://bepress.com/reference_guide_dc/batch-upload-export-revise">Bepress documentation.</a></p>
+        <p> Before you upload the spreadsheet into this form, you must export it into a UTF-8 encoded CSV file. </p>
+        <form method="POST" enctype="multipart/form-data">
+            {% csrf_token %}
+            {{ form|foundation }}
+            <br>
+            <button name="large" type="submit" class="success button">Upload</button>
+            <a href="{% url 'bepress_index' %}" class="info button">Back</a>
+        </form>
+    </div>
+{% endblock %}
