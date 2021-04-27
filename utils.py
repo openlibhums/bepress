@@ -63,7 +63,10 @@ def create_article_record(dump_name, soup, journal, default_section, section_key
     article.journal = journal
     article.abstract = str(soup.abstract.string) if soup.abstract else ''
     article.date_published = getattr(soup, 'publication-date').string
-    article.date_submitted = getattr(soup, 'submission-date').string
+    if getattr(soup, 'submission-date'):
+        article.date_submitted = getattr(soup, 'submission-date').string
+    else:
+        article.date_submitted = article.date_published
     article.stage = submission_models.STAGE_PUBLISHED
     metadata_section(soup, article, default_section, section_key)
 
@@ -317,7 +320,7 @@ def add_to_issue(article, root_path, export_path, struct):
             issue=issue_num or year,
         )
         if created:
-            issue_type = journal_models.IssueType.get(
+            issue_type = journal_models.IssueType.objects.get(
                 code="issue", journal=article.journal)
             issue.issue_type = issue_type
             issue.save()
