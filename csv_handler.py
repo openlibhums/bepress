@@ -9,6 +9,8 @@ Missing Metadata:
 
 """
 import pathlib
+import urllib.parse as urlparse
+from urllib.parse import parse_qs
 
 from bs4 import BeautifulSoup
 import requests
@@ -31,7 +33,13 @@ AUTHOR_FIELDS_MAP = {
 }
 
 
-def csv_to_xml(reader, commit=True):
+SCRAPE_FIELDS = {
+    "fulltext_url",
+    "article_id",
+}
+
+
+def csv_to_xml(reader, commit=True, scrape_missing=True):
     """Converts a Bepress CSV Batch into Bepress XML format
 
     :param reader: A csv.DictReader
@@ -40,8 +48,10 @@ def csv_to_xml(reader, commit=True):
     """
     for row in reader:
         parsed = parse_row(row)
+        if scrape_missing:
+            scrape_missing_metadata(parsed)
         xml = render_xml(parsed)
-        id = row.get("article_id") or row["context_key"]
+        id = parsed["article_id"]
         file_path = pathlib.Path(BEPRESS_PATH, row["issue"], id, "metadata.xml")
         if commit:
             logger.info("Writing to %s", file_path)
@@ -50,6 +60,7 @@ def csv_to_xml(reader, commit=True):
                 xml_file.write(xml)
         else:
             print(xml)
+        return xml
 
 
 def render_xml(parsed):
@@ -79,9 +90,8 @@ def parse_article_metadata(row):
     """
     return dict(
         row,
-        keywords=row['disciplines'].split(";"),
+        keywords=(w.strip() for w in row['disciplines'].split(";")),
         fulltext_url=get_fulltext_url(row),
-        article_id=row['context_key'],
         language=row.get('language', 'en'),
         peer_reviewed=row.get('peer_reviewed', False),
     )
@@ -110,35 +120,76 @@ def parse_authors(row):
     return authors
 
 
-def get_fulltext_url(row, unstamped=True, scrape=True):
-    """ Parse the given Bepress CSV Row and retrieve the fulltext PDF url
-    If no fulltext url is found, we try to scrape it from the article page
-    :param row: Dict of a CSV Row:
-    :param row: (bool) Return URL to the stamped version of the PDF
-    :param row: (bool) Attempt to scrape fulltext URL from remote article
-    :return: URL of the fulltext file
+def scrape_missing_metadata(data, unstamped=True):
+    """ Scrape missing entries in the provided metadata from remote URL
+    :param data: A dict with the article data 
+    :param unstamped: (bool) Return URL to the unstamped version of the PDF
     """
-    url = row.get("fulltext_url")
-    if not url and scrape and row.get("calc_url"):
+    if all(data.get(key)for key in SCRAPE_FIELDS):
+        return
+
+    soup = None
+
+    if data.get("calc_url"):
         try:
-            logger.info("Fetching article from %s", row["calc_url"])
-            response = requests.get(row["calc_url"])
+            logger.info("Fetching article from %s", data["calc_url"])
+            response = requests.get(data["calc_url"])
         except requests.exceptions.RequestException as exc:
             logger.warning("Failed to extract PDF URL: %s", exc)
         else:
             if response.ok:
                 soup = BeautifulSoup(response.text, "html.parser")
-                anchor_tag = soup.find("a", id="pdf")
-                if anchor_tag:
-                    url = anchor_tag.attrs["href"]
-                    logger.debug("Extracted fulltext url %s", url)
-                else:
-                    logger.warning("No fulltext url found")
+            else:
+                logger.warning("No fulltext url found")
+    if soup:
+        if not data.get("fulltext_url"):
+            data["fulltext_url"] = get_fulltext_url(data, soup=soup)
+    if not data.get("article_id"):
+        data["article_id"] = get_article_id(data)
+
+
+def get_fulltext_url(row, soup=None, unstamped=True):
+    """ Parse the given Bepress CSV Row and retrieve the fulltext PDF url
+    If no fulltext url is found, we try to scrape it from the article page
+    :param row: Dict of a CSV Row:
+    :param soup: A BeautifulSoup instance of the remote article
+    :param unstamped: (bool) Return URL to the unstamped version of the PDF
+    :return: URL of the fulltext file
+    """
+    url = row.get("fulltext_url")
+    
+    if not url and soup:
+        # Try from the meta tags
+        meta_tag = soup.find("meta", {"name":"bepress_citation_pdf_url"})
+        if meta_tag:
+            url = meta_tag.attrs["content"]
+            logger.debug("Extracted fulltext url %s", url)
+    
+    if not url and soup:
+        # Try from the download link
+        anchor_tag = soup.find("a", id="pdf")
+        if anchor_tag:
+            url = anchor_tag.attrs["href"]
+            logger.debug("Extracted fulltext url %s", url)
 
     if url and unstamped:
-        if "?" in url:
+        if "unstamped=0" in url:
+            url = url.replace("unstamped=0", "unstamped=1")
+        elif "?" in url:
             url += "&unstamped=1"
         else:
             url += "?unstamped=1"
 
     return url
+
+
+def get_article_id(data):
+    url = data.get("fulltext_url")
+    article_id = None
+    if url:
+        parsed_url = urlparse.urlparse(url)
+        article_id = parse_qs(parsed_url.query).get("article", "")[0]
+
+    return article_id or data["context_key"]
+        
+
