@@ -44,23 +44,23 @@ def csv_to_xml(reader, commit=True, scrape_missing=True):
 
     :param reader: A csv.DictReader
     :param commit: If true, the metadata is persisted to disk.
-    :return (tuple):
+    :return: A generator that yields XML documents and the path they'
     """
+    file_path = None
     for row in reader:
         parsed = parse_row(row)
         if scrape_missing:
             scrape_missing_metadata(parsed)
         xml = render_xml(parsed)
         id = parsed["article_id"]
-        file_path = pathlib.Path(BEPRESS_PATH, row["issue"], id, "metadata.xml")
         if commit:
+            file_path = pathlib.Path(BEPRESS_PATH, row["issue"], id, "metadata.xml")
             logger.info("Writing to %s", file_path)
             file_path.parent.mkdir(parents=True, exist_ok=True)
             with open(str(file_path), "w") as xml_file:
                 xml_file.write(xml)
-        else:
-            print(xml)
-        return xml
+
+        yield xml, file_path
 
 
 def render_xml(parsed):
