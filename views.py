@@ -8,10 +8,14 @@ from django.contrib import messages
 from core import forms as core_forms
 from journal.models import Journal
 from submission.models import Section
+from utils.logger import get_logger
 
 from plugins.bepress import const
 from plugins.bepress import utils
 from plugins.bepress import csv_handler
+
+logger = get_logger(__name__)
+
 
 CSV_MIMETYPES = ["application/csv", "text/csv"]
 
@@ -41,7 +45,12 @@ def import_bepress_csv(request):
             file_ = TextIOWrapper(
                 request.FILES['file'].file, encoding="utf-8-sig")
             reader = csv.DictReader(file_)
-            csv_handler.csv_to_xml(reader)
+            iter_xml = csv_handler.csv_to_xml(reader)
+            for xml, path in iter_xml:
+                logger.debug("Parsed XML: %s", xml)
+                if path:
+                    logger.info("Written XML to %s", path)
+                
 
             messages.add_message(
                 request, messages.SUCCESS,

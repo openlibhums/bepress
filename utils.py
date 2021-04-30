@@ -35,7 +35,7 @@ def get_bepress_import_folders():
 
 
 def soup_metadata(metadata_path):
-    logger.debug('Souping article %s' % metadata_path)
+    logger.info('Souping article %s' % metadata_path)
     metadata_content = open(metadata_path).read()
     return BeautifulSoup(metadata_content, "lxml")
 
@@ -54,7 +54,7 @@ def create_article_record(dump_name, soup, journal, default_section, section_key
         )
     else:
         article = imported_article.article
-        logger.debug(
+        logger.info(
             "Updating article %s (bepress id %s)"
             "" % (article.pk, imported_article.bepress_id)
         )
@@ -146,7 +146,7 @@ def metadata_license(soup, article):
                     journal=article.journal,
                     short_name="Copyright",
             )
-            logger.debug("No license in metadata, defaulting to copyright")
+            logger.info("No license in metadata, defaulting to copyright")
         except submission_models.Licence.DoesNotExist:
             logger.warning("No license in metadata")
 
@@ -211,7 +211,18 @@ def fetch_remote_galley(soup, stamped=False):
     url = getattr(soup, "fulltext-url").string
     if url:
         if stamped:
-            url = url.replace("unstamped=1", "unstamped=0")
+            has = "unstamped=1"
+            wants = "unstamped=0"
+        else:
+            has = "unstamped=0"
+            wants = "unstamped=1"
+        if '?' in url and "unstamped=" in url:
+            url = url.replace(has, wants)
+        elif '?' in url:
+            url += "&%s" % wants
+        else:
+            url += "?%s" % wants
+
         response = requests.get(url, stream=True)
         if response.status_code != 200:
             logger.error("Error fetching galley: %s", response.status_code)
@@ -331,7 +342,7 @@ def add_to_issue(article, root_path, export_path, struct):
         issue.articles.add(article)
         article.primary_issue = issue
         article.save()
-        logger.debug("Added to issue {}".format(issue))
+        logger.info("Added to issue {}".format(issue))
 
 
 def get_filename_from_local(sub_files, stamped=False):

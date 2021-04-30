@@ -9,7 +9,8 @@ class TestFilesHandler(TestCase):
     def test_csv_to_xml(self):
         data = [TEST_ARTICLE_DATA]
         expected = TEST_ARTICLE_XML
-        result = csv_handler.csv_to_xml(data, commit=False)
+        result_iter = csv_handler.csv_to_xml(data, commit=False)
+        result, _ = next(result_iter)
         self.assertEquals(expected.replace("\n", ''), result.replace("\n",''))
 
     def test_parse_article_metadata(self):
