@@ -173,6 +173,8 @@ def metadata_authors(soup, article, create_accounts=False):
             author_dict["middle_name"] = bepress_author.mname.string
         if bepress_author.institution:
             author_dict["institution"] = bepress_author.institution.string
+        if bepress_author.suffix:
+            author_dict["name_suffix"] = bepress_author.suffix.string
 
         try:
             email = bepress_author.email.string
@@ -196,7 +198,7 @@ def metadata_authors(soup, article, create_accounts=False):
 
         account.snapshot_self(article)
         submission_models.FrozenAuthor.objects.filter(
-            author=author, article=article,
+            author=account, article=article,
         ).update(order=i)
 
         models.ImportedArticleAuthor.objects.get_or_create(
