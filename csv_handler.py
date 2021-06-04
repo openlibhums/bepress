@@ -26,7 +26,7 @@ AUTHOR_FIELDS_MAP = {
     ('author%d_fname', 'first_name'),
     ('author%d_mname', 'middle_name'),
     ('author%d_lname', 'last_name'),
-    ('author%d_suffix', 'salutation'),
+    ('author%d_suffix', 'suffix'),
     ('author%d_email', 'email'),
     ('author%d_institution', 'institution'),
     ('author%d_is_corporate', 'is_corporate'),

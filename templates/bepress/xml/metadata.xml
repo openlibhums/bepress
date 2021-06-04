@@ -21,6 +21,9 @@
               {% if author.last_name %}
                 <lname>{{ author.last_name }}</lname>
               {% endif %}
+              {% if author.suffix %}
+                <suffix>{{ author.suffix }}</suffix>
+              {% endif %}
               {% if author.email %}
                 <email>{{ author.email }}</email>
               {% endif %}
