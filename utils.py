@@ -123,22 +123,18 @@ def metadata_license(soup, article):
         license_url = field.value.string
         if license_url.endswith("/"):
             license_url = license_url[:-1]
-        try:
-            article.license = submission_models.Licence.objects.get(
-                    journal=article.journal,
-                    url=license_url,
-            )
-        except submission_models.Licence.DoesNotExist:
-            try:
-                split = urlsplit(license_url)
-                split = split._replace(
-                    scheme="https" if split.scheme == "http" else "http")
-                article.license = submission_models.Licence.objects.get(
-                        journal=article.journal,
-                        url=split.geturl(),
-                )
-            except submission_models.Licence.DoesNotExist:
-                logger.warning("Unknown license %s" % license_url)
+        license_url.replace("http:", "https:")
+        article.license, c = submission_models.Licence.objects.get_or_create(
+            journal=article.journal,
+            url=license_url,
+            defaults={
+                "name": "Imported license",
+                "short_name": "imported",
+            }
+        )
+        if c:
+            logger.info("Created new license %s", license_url)
+
     else:
         try:
             # Default to Copyright
