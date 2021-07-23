@@ -287,6 +287,31 @@ def fetch_remote_galley(soup, stamped=False):
 
     return None
 
+
+def import_supp_files(soup, article):
+    """ Imports supplemental files
+    XML Sample
+    <supplemental-files>
+        <file>
+            <archive-name>file.extension</archive-name>
+            <upload-name>file.extension</upload-name>
+            <url>url_to_file</url>
+            <mime-type>text/html</mime-type>
+            <description>HTML version of article</description>
+        </file>
+    </supplemental-files>
+    """
+    soup_supp_files = getattr(soup, "supplemental-files")
+    if soup_supp_files:
+        for souped_file in soup_supp_files.findChildren("file"):
+            django_file = fetch_file(souped_file.url.string)
+            mime_type = getattr(souped_file, "mime-type")
+
+            # HTML files are loaded as supplemental files
+            if mime_type.string in files.HTML_MIMETYPES:
+                add_html_galley(django_file, article)
+
+
 def add_pdf_galley(pdf_file, article):
     if article.pdfs:
         return
@@ -302,6 +327,24 @@ def add_pdf_galley(pdf_file, article):
             file=saved_file,
             type="pdf",
             label="pdf",
+    )
+    article.galley_set.add(galley)
+
+
+def add_html_galley(html_galley, article):
+    if article.galley_set.filter(type="html").exists():
+        return
+    saved_file = files.save_file_to_article(
+            html_galley, article,
+            owner=None,
+            label="HTML",
+            is_galley=True,
+    )
+    galley = Galley.objects.create(
+            article=article,
+            file=saved_file,
+            type="html",
+            label="HTML",
     )
     article.galley_set.add(galley)
 
@@ -325,6 +368,7 @@ def import_articles(folder, stamped, journal, struct, default_section, section_k
             #Query the article to ensure correct attribute types
             article = submission_models.Article.objects.get(pk=article.pk)
             add_to_issue(article, root, path, struct, soup)
+            import_supp_files(soup, article)
             if pdf_file:
                 add_pdf_galley(pdf_file, article)
 
@@ -355,7 +399,8 @@ def add_to_issue(article, root_path, export_path, struct, soup):
     :param soup: (bs4.Soup) Soupified metadata.xml
     """
     relative_path = root_path.replace(export_path, "")
-    issue_title = year = issue_num = vol_num = None
+    year = issue_num = vol_num = None
+    issue_title = ""
     issue_type = journal_models.IssueType.objects.get(
         code="issue", journal=article.journal)
     try:
@@ -437,3 +482,15 @@ def get_filename_from_headers(response):
             "" % e
         )
         return '{uuid}.pdf'.format(uuid=uuid4())
+
+
+def fetch_file(url):
+    response = requests.get(url)
+    response.raise_for_status()
+    filename = get_filename_from_headers(response)
+    django_file = SimpleUploadedFile(
+        filename,
+        response.content,
+        "application/pdf",
+    )
+    return django_file
