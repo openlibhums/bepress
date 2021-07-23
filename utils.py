@@ -303,7 +303,7 @@ def import_articles(folder, stamped, journal, struct, default_section, section_k
 
             #Query the article to ensure correct attribute types
             article = submission_models.Article.objects.get(pk=article.pk)
-            add_to_issue(article, root, path, struct)
+            add_to_issue(article, root, path, struct, soup)
             if pdf_file:
                 add_pdf_galley(pdf_file, article)
 
@@ -319,28 +319,36 @@ def fetch_local_galley(root_path, sub_files, stamped):
     else:
         return None
 
-def add_to_issue(article, root_path, export_path, struct):
+def add_to_issue(article, root_path, export_path, struct, soup):
     """ Adds the new article to the right issue. Issue created if not present
 
     Bepress exports have roughly this structure:
-     - Journal export:
-         path/to/export/vol{volume_id}/iss{issue_id}/{article_id}/*
-     - Conference export:
-         path/to/export/{year}/*/*
-         :param article: The submission.Article being imported
+    - Journal export (JOURNAL_STRUCTURE):
+        path/to/export/vol{volume_id}/iss{issue_id}/{article_id}/*
+    - Conference export (EVENTS_STRUCTURE):
+        path/to/export/{year}/*/*
+    :param article: The submission.Article being imported
     :param root_path: The absolute path in which the metadata.xml was found
     :param export_path: The absolute path to the provided exported data
     :param struct: (str) One of const.BEPRESS_STRUCTURES
+    :param soup: (bs4.Soup) Soupified metadata.xml
     """
     relative_path = root_path.replace(export_path, "")
-    year = issue_num = vol_num = None
+    issue_title = year = issue_num = vol_num = None
+    issue_type = journal_models.IssueType.objects.get(
+        code="issue", journal=article.journal)
     try:
         if struct == const.EVENTS_STRUCTURE:
+            issue_type = journal_models.IssueType.objects.get(
+                code="collection", journal=article.journal)
             _, year, *remaining = relative_path.split("/")
+            pub_title = getattr(soup, 'publication-title')
+            if pub_title:
+                issue_title = "%s %s" % (pub_title.string, year)
         elif struct == const.JOURNAL_STRUCTURE:
             _, volume_code, issue_code, article_id = relative_path.split("/")
-            vol_num = int(volume_code.replace("vol", "")) # volN
-            issue_num = int(issue_code.replace("iss", "")) # issN
+            vol_num = int(volume_code.replace("vol", ""))  # volN
+            issue_num = int(issue_code.replace("iss", ""))  # issN
         elif struct == const.SERIES_STRUCTURE:
             year = vol_num = str(article.date_published.year - 1)
         else:
@@ -348,7 +356,7 @@ def add_to_issue(article, root_path, export_path, struct):
     except Exception as e:
         logger.exception(e)
         logger.error(
-                "Failed to get issue details for {}, path: {}".format(
+            "Failed to get issue details for {}, path: {}".format(
                 "conference" if article.journal.is_conference else "journal",
                 export_path,
             )
@@ -358,20 +366,21 @@ def add_to_issue(article, root_path, export_path, struct):
             journal=article.journal,
             volume=vol_num or 1,
             issue=issue_num or year,
+            issue_title=issue_title
         )
         if created:
-            issue_type = journal_models.IssueType.objects.get(
-                code="issue", journal=article.journal)
             issue.issue_type = issue_type
-            issue.save()
             logger.info("Created new issue {}".format(issue))
 
         if year:
             issue.date = dateutil.parser.parse(year)
+        issue.save()
         issue.articles.add(article)
         article.primary_issue = issue
         article.save()
         logger.info("Added to issue {}".format(issue))
+
+        return issue
 
 
 def get_filename_from_local(sub_files, stamped=False):
