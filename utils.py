@@ -78,6 +78,7 @@ def create_article_record(dump_name, soup, journal, default_section, section_key
     metadata_authors(soup, article)
     metadata_license(soup, article)
     metadata_citation(soup, article)
+    metadata_pages(soup, article)
     article.save()
 
     imported_article.article = article
@@ -164,7 +165,19 @@ def metadata_citation(soup, article):
     field = soup.fields.find(attrs={"name": "dc_citation"})
     if field and field.value:
         article.custom_how_to_cite = field.value.string
-        article.save()
+
+
+def metadata_pages(soup, article):
+    pages = ""
+    first_page = getattr(soup, "fpage")
+    if first_page:
+        pages = first_page.string
+    last_page = getattr(soup, "lpage")
+    if last_page:
+        pages += "-%s" % last_page.string
+
+    if pages:
+        article.page_numbers = pages
 
 
 def metadata_authors(soup, article, dummy_accounts=False):
