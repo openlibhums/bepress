@@ -77,6 +77,7 @@ def create_article_record(dump_name, soup, journal, default_section, section_key
     metadata_keywords(soup, article)
     metadata_authors(soup, article)
     metadata_license(soup, article)
+    metadata_citation(soup, article)
     article.save()
 
     imported_article.article = article
@@ -151,12 +152,19 @@ def metadata_license(soup, article):
         try:
             # Default to Copyright
             article.license = submission_models.Licence.objects.get(
-                    journal=article.journal,
-                    short_name="Copyright",
+                journal=article.journal,
+                short_name="Copyright",
             )
             logger.info("No license in metadata, defaulting to copyright")
         except submission_models.Licence.DoesNotExist:
             logger.warning("No license in metadata, leaving blank")
+
+
+def metadata_citation(soup, article):
+    field = soup.fields.find(attrs={"name": "dc_citation"})
+    if field and field.value:
+        article.custom_how_to_cite = field.value.string
+        article.save()
 
 
 def metadata_authors(soup, article, dummy_accounts=False):
