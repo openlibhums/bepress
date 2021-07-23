@@ -15,6 +15,7 @@ import requests
 
 from core import files
 from core.models import Account, Galley
+from identifiers.models import Identifier
 from submission import models as submission_models
 from journal import models as journal_models
 
@@ -72,6 +73,7 @@ def create_article_record(dump_name, soup, journal, default_section, section_key
 
     article.save()
 
+    metadata_doi(soup, article)
     metadata_keywords(soup, article)
     metadata_authors(soup, article)
     metadata_license(soup, article)
@@ -81,6 +83,16 @@ def create_article_record(dump_name, soup, journal, default_section, section_key
     imported_article.save()
 
     return article
+
+
+def metadata_doi(soup, article):
+    field = soup.fields.find(attrs={"name": "doi"})
+    if field and field.value:
+        Identifier.objects.get_or_create(
+            id_type="doi",
+            article=article,
+            identifier=field.value.string
+        )
 
 
 def metadata_keywords(soup, article):
@@ -208,7 +220,6 @@ def handle_corporate_author(bepress_author, article):
         institution=bepress_author.organization.string,
         is_corporate=True,
     )
-
 
 
 def handle_frozen_author(bepress_author, article, order, account=None):
