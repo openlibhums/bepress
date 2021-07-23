@@ -144,18 +144,16 @@ def metadata_license(soup, article):
             )
             logger.info("No license in metadata, defaulting to copyright")
         except submission_models.Licence.DoesNotExist:
-            logger.warning("No license in metadata")
+            logger.warning("No license in metadata, leaving blank")
 
 
-def metadata_authors(soup, article, create_accounts=False):
+def metadata_authors(soup, article, dummy_accounts=False):
     bepress_authors = [a for a in soup.authors if a.string != "\n"]
     for i, bepress_author in enumerate(bepress_authors):
         if bepress_author.organization:
             handle_corporate_author(bepress_author, article)
             continue
-
         author_dict = {}
-        account = None
 
         if bepress_author.fname:
             author_dict["first_name"] = bepress_author.fname.string
@@ -169,38 +167,36 @@ def metadata_authors(soup, article, create_accounts=False):
             author_dict["middle_name"] = bepress_author.mname.string
         if bepress_author.institution:
             author_dict["institution"] = bepress_author.institution.string
-        if bepress_author.suffix:
-            author_dict["name_suffix"] = bepress_author.suffix.string
 
         try:
             email = bepress_author.email.string
         except AttributeError:
-            if create_accounts:
-                email = make_dummy_email(bepress_author)
-            else:
-                handle_frozen_author(author_dict, article, i)
-                continue
+            email = None
+        account = None
 
-        account, _ = Account.objects.get_or_create(
-            email=email,
-            defaults=author_dict,
-        )
+        if not email and dummy_accounts:
+            email = make_dummy_email(bepress_author)
 
-        author_order, created = submission_models.ArticleAuthorOrder \
-            .objects.get_or_create(
-                article=article, author=account,
-                defaults={"order": i}
-        )
+        if email:
+            account, _ = Account.objects.get_or_create(
+                email=email,
+                defaults=author_dict,
+            )
+        if account:
+            author_order, created = submission_models.ArticleAuthorOrder \
+                .objects.get_or_create(
+                    article=article, author=account,
+                    defaults={"order": i}
+            )
+            models.ImportedArticleAuthor.objects.get_or_create(
+                    article=article,
+                    author=account,
+            )
 
-        account.snapshot_self(article)
-        submission_models.FrozenAuthor.objects.filter(
-            author=account, article=article,
-        ).update(order=i)
-
-        models.ImportedArticleAuthor.objects.get_or_create(
-                article=article,
-                author=account,
-        )
+        # This field is frozen only
+        if bepress_author.suffix:
+            author_dict["name_suffix"] = bepress_author.suffix.string
+        handle_frozen_author(author_dict, article, i, account=account)
 
         if i == 0 and account:
             article.correspondence_author = account
@@ -214,11 +210,13 @@ def handle_corporate_author(bepress_author, article):
     )
 
 
-def handle_frozen_author(bepress_author, article, order):
-    frozen_record,c = submission_models.FrozenAuthor.objects.get_or_create(
+
+def handle_frozen_author(bepress_author, article, order, account=None):
+    frozen_record, c = submission_models.FrozenAuthor.objects.update_or_create(
         article=article,
         order=order,
-        **bepress_author
+        author=account,
+        defaults=bepress_author,
     )
 
 
