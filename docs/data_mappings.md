@@ -12,18 +12,19 @@ A journal mapping is used when the source digital commons publication type of th
 | Bepress XML metadata                        | Janeway Model                 | Notes |
 | ------------------------------------------- | ----------------------------- | ----- |
 | document.title                              | Article.title                 |       |
-| Document.abstract                           | Article.abstract              |       |
-| Document.publication-date                   | Article.date\_published       |       |
-| Document.submisison-date                    | Article.date\_submitted       |       |
-| Document.document-type                      | Article.section.name          |       |
-| Document.fields(name=distribution\_license) | Article.license               |       |
-| Document.fields(name=dc\_citation)          | Article.custom\_how\_to\_cite |       |
-| Document.fpage                              | Article.page\_numbers         |       |
-| Document.lpage                              |
-| Document.fields(name=doi)                   | Article.doi                   |       |
-| Document.keywords                           | Article.keywords              |       |
+| document.abstract                           | Article.abstract              |       |
+| document.publication-date                   | Article.date\_published       |       |
+| document.submisison-date                    | Article.date\_submitted       |       |
+| document.fields(name=distribution\_license) | Article.license               |       |
+| document.fields(name=dc\_citation)          | Article.custom\_how\_to\_cite |       |
+| document.fpage                              | Article.page\_numbers         |       |
+| document.lpage                              |
+| document.fields(name=doi)                   | Article.doi                   |       |
+| document.keywords                           | Article.keywords              |       |
+| document.document-type                      | Article.section.name          | *(1)  |
 
-
+*1: a custom document.field name can be used for publications that don't have a document.document-type. This is more
+common on Series or Event publications, but it is also available for journals.
 ### Author objects
 
 In Janeway, author metadata is divided into two models:
@@ -35,13 +36,13 @@ When no email address is present in the Bepress metadata, an Account object won'
 
 | Bepress XML metadata               | Janeway Model                   | Notes                                           |
 | ---------------------------------- | ------------------------------- | ----------------------------------------------- |
-|  Author.fname                      | FrozenAuthor.first\_name        |                                                 |
-| Author.lname                       | FrozenAuthor.last\_name         |                                                 |
-| Author.mname                       | FrozenAuthor.middle\_name       |                                                 |
-| Author.institution                 | FrozenAuthor.institution        |                                                 |
-| Author.email                       | Account.email                   |                                                 |
-| Author.suffix                      | FrozenAuthor.name\_suffix       |                                                 |
-| Document.fields(name=dc\_citation) | Article.custom\_how\_to\_cite   |                                                 |
+| author.fname                       | FrozenAuthor.first\_name        |                                                 |
+| author.lname                       | FrozenAuthor.last\_name         |                                                 |
+| author.mname                       | FrozenAuthor.middle\_name       |                                                 |
+| author.institution                 | FrozenAuthor.institution        |                                                 |
+| author.email                       | Account.email                   |                                                 |
+| author.suffix                      | FrozenAuthor.name\_suffix       |                                                 |
+| document.fields(name=dc\_citation) | Article.custom\_how\_to\_cite   |                                                 |
 |                                    | Article.Correspondenece\_author | Set to the first author in the list of authors. |
 
 
@@ -51,7 +52,7 @@ In Janeway, Corporate authors are captured under the same FrozenAuthor record. T
 
 | Bepress XML metadata | Janeway Model                     | Notes                                |
 | -------------------- | --------------------------------- | ------------------------------------ |
-| Author.organization  | FrozenAuthor.Institution          |                                      |
+| author.organization  | FrozenAuthor.Institution          |                                      |
 |                      | FrozenAuthor.is\_corporate = True | Always set to True for these authors |
 
 
