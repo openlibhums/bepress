@@ -79,6 +79,9 @@ def create_article_record(dump_name, soup, journal, default_section, section_key
     metadata_license(soup, article)
     metadata_citation(soup, article)
     metadata_pages(soup, article)
+    metadata_notes(soup, article)
+    metadata_publisher_notes(soup, article)
+    metadata_publisher_name(soup, article)
     article.save()
 
     imported_article.article = article
@@ -107,6 +110,38 @@ def metadata_keywords(soup, article):
             article.keywords.add(word)
         except OperationalError as e:
             logger.warning("Couldn't add keyword %s: %s" % (keyword, e))
+
+
+def metadata_notes(soup, article):
+    """ Imports private editorial comments into the notes system
+    """
+    field = soup.fields.find(attrs={"name": "notes"})
+    if field and field.value:
+        user = Account.objects.filter(is_superuser=True).first()
+        submission_models.Note.get_or_create(
+            user=user,
+            aricle=article,
+            text=field.value,
+        )
+
+
+def metadata_publisher_notes(soup, article):
+    """ Imports comments, erratum and retraction as publisher notes
+    """
+    comments_field = soup.fields.find(attrs={"name": "comments"})
+    if comments_field and comments_field.value:
+        submission_models.Note.get_or_create(
+            aricle=article,
+            text=comments_field.value,
+        )
+
+    erratum = soup.fields.find(attrs={"name": "erratum"})
+    if erratum and erratum.value:
+        erratum_text = "<h3>Erratum</h3>%s" % erratum.value
+        submission_models.Note.get_or_create(
+            aricle=article,
+            text=erratum_text,
+        )
 
 
 def metadata_section(soup, article, default_section, section_key=None):
@@ -160,6 +195,10 @@ def metadata_license(soup, article):
         except submission_models.Licence.DoesNotExist:
             logger.warning("No license in metadata, leaving blank")
 
+    rights_field = soup.fields.find(attrs={"name": "doi"})
+    if rights_field and rights_field.value:
+        article.rights = rights_field.value
+
 
 def metadata_citation(soup, article):
     field = soup.fields.find(attrs={"name": "dc_citation"})
@@ -178,6 +217,22 @@ def metadata_pages(soup, article):
 
     if pages:
         article.page_numbers = pages
+
+    tpages_field = soup.fields.find(attrs={"name": "doi"})
+    if tpages_field and tpages_field.value:
+        total_pages_str = tpages_field.value
+        # This is stored as "XX Pages"
+        if not total_pages_str.isdigit():
+            # Split as ["XX", "Pages"]
+            total_pages_str, _ = total_pages_str.split(" ")
+        if total_pages_str.isdigit():
+            article.total_pages = int(total_pages_str)
+
+
+def metadata_publisher_name(soup, article):
+    field = soup.fields.find(attrs={"name": "publisher_name"})
+    if field and field.value:
+        article.publisher_name = field.value
 
 
 def metadata_authors(soup, article, dummy_accounts=False):
