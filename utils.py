@@ -407,25 +407,28 @@ def add_html_galley(html_galley, article):
 def import_articles(folder, stamped, journal, struct, default_section, section_key):
     path = os.path.join(BEPRESS_PATH, folder)
     for root, dirs, files_ in os.walk(path):
+        try:
+            if 'metadata.xml' in files_:
+                metadata_path = os.path.join(root, 'metadata.xml')
 
-        if 'metadata.xml' in files_:
-            metadata_path = os.path.join(root, 'metadata.xml')
+                soup = soup_metadata(metadata_path)
+                try:
+                    pdf_file = fetch_remote_galley(soup, stamped)
+                except AttributeError:
+                    pdf_file = fetch_local_galley(root, files_, stamped)
 
-            soup = soup_metadata(metadata_path)
-            try:
-                pdf_file = fetch_remote_galley(soup, stamped)
-            except AttributeError:
-                pdf_file = fetch_local_galley(root, files_, stamped)
+                article = create_article_record(
+                    folder, soup, journal, default_section, section_key)
 
-            article = create_article_record(
-                folder, soup, journal, default_section, section_key)
-
-            #Query the article to ensure correct attribute types
-            article = submission_models.Article.objects.get(pk=article.pk)
-            add_to_issue(article, root, path, struct, soup)
-            import_supp_files(soup, article)
-            if pdf_file:
-                add_pdf_galley(pdf_file, article)
+                # Query the article to ensure correct attribute types
+                article = submission_models.Article.objects.get(pk=article.pk)
+                add_to_issue(article, root, path, struct, soup)
+                import_supp_files(soup, article)
+                if pdf_file:
+                    add_pdf_galley(pdf_file, article)
+        except Exception as e:
+            logger.error("Article import failed: %s", e)
+            logger.exception(e)
 
 
 def fetch_local_galley(root_path, sub_files, stamped):
