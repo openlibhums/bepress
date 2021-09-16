@@ -28,6 +28,9 @@ Some exports won't include the PDF URL (`fulltext_url`), in those cases, this pl
 
 The spreadsheet needs to be exported as a CSV before you can import it into Janeway and then it be loaded from the Bepress plugin page in your Janeway installation. Janeway will generate a set of XML files, equivalent to the bepress archive format that will be saved under `src/files/plugins/bepress`
 
+### Metadata Bindings
+You can see a table on how the metadata is translated from the Bepress archives into Janeway in [this document](docs/data_mappings.md)
+
 
 ### Running the import process
 Once your XML metadata has been loaded in (whether from an archive or from a CSV), you can run the import process by visiting the Bepress page in your Janeway installation and completing the import form.
