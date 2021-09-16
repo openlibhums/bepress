@@ -16,12 +16,15 @@ A journal mapping is used when the source digital commons publication type of th
 | document.publication-date                   | Article.date\_published       |       |
 | document.submisison-date                    | Article.date\_submitted       |       |
 | document.fields(name=distribution\_license) | Article.license               |       |
-| document.fields(name=dc\_citation)          | Article.custom\_how\_to\_cite |       |
+| document.fields(name=rights)                | Article.rights                |       |
 | document.fpage                              | Article.page\_numbers         |       |
 | document.lpage                              |
+| document.fields(name=tpages)                | Article.total\_pages          |       |
 | document.fields(name=doi)                   | Article.doi                   |       |
 | document.keywords                           | Article.keywords              |       |
 | document.document-type                      | Article.section.name          | *(1)  |
+| document.fields(name=publisher_name)        | Article.publisher\_name       |       |
+| document.fields(name=financial\_disclosure) | Article.competing\_interests  |       |
 
 *1: a custom document.field name can be used for publications that don't have a document.document-type. This is more
 common on Series or Event publications, but it is also available for journals.
@@ -77,9 +80,19 @@ The year of the event is determined by the directory structure in which the meta
 Series lack any formal structure which makes it tricky to recreate them in Janeway. By default, series documents are imported as part of an issue. The Issue object is created from each document metadata
 
 | Bepress XML metadata           | Janeway Model                     | Notes                                |
-| -----------------------------  | --------------------------------- | ------------------------------------ |
+| ------------------------------ | --------------------------------- | ------------------------------------ |
 | document.publication-date.year | Issue.date.year & Issue.volume    |                                      |
 
+## Notes / Publisher Notes
+
+These objects are imported for all articles where a matching field is found. Publisher notes are public and rendered in the article page
+while Notes are private and only available to the editorial team in the article summary page
+
+| Bepress XML metadata                        | Janeway Model                 | Notes |
+| ------------------------------------------- | ----------------------------- | ----- |
+| document.fields(name=comments)              | PublisherNotes                |       |
+| document.fields(name=erratum)               | PublisherNotes                |       |
+| document.fields(name=notes)                 | Notes                         |       |
 
 ## Files
 

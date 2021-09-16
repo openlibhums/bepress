@@ -14,16 +14,17 @@ from django.db.utils import OperationalError
 import requests
 
 from core import files
-from core.models import Account, Galley
+from core.models import Account, Galley, SupplementaryFile
 from identifiers.models import Identifier
 from submission import models as submission_models
 from journal import models as journal_models
+from utils.logger import get_logger
 
 from plugins.bepress import const
 from plugins.bepress import models
 from plugins.bepress.plugin_settings import BEPRESS_PATH
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 SECTION_FIELDS = ["track"]
 
@@ -63,9 +64,21 @@ def create_article_record(dump_name, soup, journal, default_section, section_key
     article.title = soup.title.string
     article.journal = journal
     article.abstract = str(soup.abstract.string) if soup.abstract else ''
-    article.date_published = getattr(soup, 'publication-date').string
+    date_published = getattr(soup, 'publication-date').string
+    try:
+        article.date_published = dateutil.parser.parse(date_published)
+    except Exception as e:
+        logger.warning("Unable to parse pub datetime %s, trying to extract date...", date_published)
+        date_published, *_ = date_published.split("T")
+        article.date_published = dateutil.parser.parse(date_published)
     if getattr(soup, 'submission-date'):
-        article.date_submitted = getattr(soup, 'submission-date').string
+        submission_date = getattr(soup, 'submission-date').string
+        try:
+            article.date_submitted = dateutil.parser.parse(submission_date)
+        except Exception as e:
+            logger.warning("Unable to parse sub datetime %s, trying to extract date...", date_published)
+            date_submitted, *_ = date_submitted.split("T")
+            article.date_submitted  = dateutil.parser.parse(date_submitted)
     else:
         article.date_submitted = article.date_published
     article.stage = submission_models.STAGE_PUBLISHED
@@ -79,6 +92,10 @@ def create_article_record(dump_name, soup, journal, default_section, section_key
     metadata_license(soup, article)
     metadata_citation(soup, article)
     metadata_pages(soup, article)
+    metadata_competing_interests(soup, article)
+    metadata_notes(soup, article)
+    metadata_publisher_notes(soup, article)
+    metadata_publisher_name(soup, article)
     article.save()
 
     imported_article.article = article
@@ -109,6 +126,49 @@ def metadata_keywords(soup, article):
             logger.warning("Couldn't add keyword %s: %s" % (keyword, e))
 
 
+def metadata_competing_interests(soup, article):
+    """ Imports financial disclosure field as competing interests"""
+    field = soup.fields.find(attrs={"name": "financial_disclosure"})
+    if field and field.value:
+        article.competing_interests = field.value.string
+
+
+
+def metadata_notes(soup, article):
+    """ Imports private editorial comments into the notes system
+    """
+    field = soup.fields.find(attrs={"name": "notes"})
+    if field and field.value:
+        user = Account.objects.filter(is_superuser=True).first()
+        submission_models.Note.objects.get_or_create(
+            creator=user,
+            article=article,
+            text=field.value.string,
+        )
+
+
+def metadata_publisher_notes(soup, article):
+    """ Imports comments, erratum and retraction as publisher notes
+    """
+    user = Account.objects.filter(is_superuser=True).first()
+    comments_field = soup.fields.find(attrs={"name": "comments"})
+    if comments_field and comments_field.value:
+        note, _ = submission_models.PublisherNote.objects.get_or_create(
+            text=comments_field.value.string,
+            creator=user,
+        )
+        article.publisher_notes.add(note)
+
+    erratum = soup.fields.find(attrs={"name": "erratum"})
+    if erratum and erratum.value:
+        erratum_text = "<h3>Erratum</h3>%s" % erratum.value.string
+        erratum_note, _ = submission_models.PublisherNote.objects.get_or_create(
+            text=erratum_text,
+            creator=user,
+        )
+        article.publisher_notes.add(erratum_note)
+
+
 def metadata_section(soup, article, default_section, section_key=None):
     if section_key:
         field = soup.fields.find(attrs={"name": section_key})
@@ -118,10 +178,10 @@ def metadata_section(soup, article, default_section, section_key=None):
         soup_section = field.string if field else None
 
     if soup_section:
-        section, c = submission_models.Section.objects.language("en")\
+        section, c = submission_models.Section.objects \
         .get_or_create(
             name=soup_section,
-            journal=article.journal
+            journal=article.journal,
         )
         article.section = section
     elif default_section:
@@ -160,8 +220,13 @@ def metadata_license(soup, article):
         except submission_models.Licence.DoesNotExist:
             logger.warning("No license in metadata, leaving blank")
 
+    rights_field = soup.fields.find(attrs={"name": "rights"})
+    if rights_field and rights_field.value:
+        article.rights = rights_field.value.string
+
 
 def metadata_citation(soup, article):
+    return
     field = soup.fields.find(attrs={"name": "dc_citation"})
     if field and field.value:
         article.custom_how_to_cite = field.value.string
@@ -178,6 +243,22 @@ def metadata_pages(soup, article):
 
     if pages:
         article.page_numbers = pages
+
+    tpages_field = soup.fields.find(attrs={"name": "tpages"})
+    if tpages_field and tpages_field.value:
+        total_pages_str = tpages_field.value.string
+        # This is stored as "XX Pages"
+        if not total_pages_str.isdigit():
+            # Split as ["XX", "Pages"]
+            total_pages_str, *_ = total_pages_str.split(" ")
+        if total_pages_str.isdigit():
+            article.total_pages = int(total_pages_str)
+
+
+def metadata_publisher_name(soup, article):
+    field = soup.fields.find(attrs={"name": "publisher_name"})
+    if field and field.value:
+        article.publisher_name = field.value.string
 
 
 def metadata_authors(soup, article, dummy_accounts=False):
@@ -310,6 +391,25 @@ def import_supp_files(soup, article):
             # HTML files are loaded as supplemental files
             if mime_type.string in files.HTML_MIMETYPES:
                 add_html_galley(django_file, article)
+            else:
+                add_supp_file_to_article(django_file, souped_file, article)
+
+
+def add_supp_file_to_article(supp_file, file_soup, article, label=None):
+    if not label and file_soup.description:
+        label = file_soup.description.string
+    else:
+        label = "Supplementary File"
+
+    saved_file = files.save_file_to_article(
+        supp_file, article,
+        owner=None,
+        label=label,
+        is_galley=False,
+    )
+    supp_obj = SupplementaryFile.objects.create(file=saved_file)
+    article.supplementary_files.add(supp_obj)
+    return supp_obj
 
 
 def add_pdf_galley(pdf_file, article):
@@ -350,27 +450,31 @@ def add_html_galley(html_galley, article):
 
 
 def import_articles(folder, stamped, journal, struct, default_section, section_key):
+    logger.set_prefix(journal.code)
     path = os.path.join(BEPRESS_PATH, folder)
     for root, dirs, files_ in os.walk(path):
+        try:
+            if 'metadata.xml' in files_:
+                metadata_path = os.path.join(root, 'metadata.xml')
 
-        if 'metadata.xml' in files_:
-            metadata_path = os.path.join(root, 'metadata.xml')
+                soup = soup_metadata(metadata_path)
+                try:
+                    pdf_file = fetch_remote_galley(soup, stamped)
+                except AttributeError:
+                    pdf_file = fetch_local_galley(root, files_, stamped)
 
-            soup = soup_metadata(metadata_path)
-            try:
-                pdf_file = fetch_remote_galley(soup, stamped)
-            except AttributeError:
-                pdf_file = fetch_local_galley(root, files_, stamped)
+                article = create_article_record(
+                    folder, soup, journal, default_section, section_key)
 
-            article = create_article_record(
-                folder, soup, journal, default_section, section_key)
-
-            #Query the article to ensure correct attribute types
-            article = submission_models.Article.objects.get(pk=article.pk)
-            add_to_issue(article, root, path, struct, soup)
-            import_supp_files(soup, article)
-            if pdf_file:
-                add_pdf_galley(pdf_file, article)
+                # Query the article to ensure correct attribute types
+                article = submission_models.Article.objects.get(pk=article.pk)
+                add_to_issue(article, root, path, struct, soup)
+                import_supp_files(soup, article)
+                if pdf_file:
+                    add_pdf_galley(pdf_file, article)
+        except Exception as e:
+            logger.error("Article import failed: %s", e)
+            logger.exception(e)
 
 
 def fetch_local_galley(root_path, sub_files, stamped):
@@ -408,6 +512,8 @@ def add_to_issue(article, root_path, export_path, struct, soup):
             issue_type = journal_models.IssueType.objects.get(
                 code="collection", journal=article.journal)
             _, year, *remaining = relative_path.split("/")
+            if not year.isdigit():
+                year = str(article.date_published.year)
             pub_title = getattr(soup, 'publication-title')
             if pub_title:
                 issue_title = "%s %s" % (pub_title.string, year)
@@ -415,6 +521,9 @@ def add_to_issue(article, root_path, export_path, struct, soup):
             _, volume_code, issue_code, article_id = relative_path.split("/")
             vol_num = int(volume_code.replace("vol", ""))  # volN
             issue_num = int(issue_code.replace("iss", ""))  # issN
+            # We don't have an issue date on metadata.xml so we use the article's
+            if article.date_published:
+                year = str(article.date_published.year)
         elif struct == const.SERIES_STRUCTURE:
             year = vol_num = str(article.date_published.year - 1)
         else:
