@@ -64,9 +64,21 @@ def create_article_record(dump_name, soup, journal, default_section, section_key
     article.title = soup.title.string
     article.journal = journal
     article.abstract = str(soup.abstract.string) if soup.abstract else ''
-    article.date_published = dateutil.parser.parse(getattr(soup, 'publication-date').string)
+    date_published = getattr(soup, 'publication-date').string
+    try:
+        article.date_published = dateutil.parser.parse(date_published)
+    except Exception as e:
+        logger.warning("Unable to parse pub datetime %s, trying to extract date...", date_published)
+        date_published, *_ = date_published.split("T")
+        article.date_published = dateutil.parser.parse(date_published)
     if getattr(soup, 'submission-date'):
-        article.date_submitted = dateutil.parser.parse(getattr(soup, 'submission-date').string)
+        submission_date = getattr(soup, 'submission-date').string
+        try:
+            article.date_submitted = dateutil.parser.parse(submission_date)
+        except Exception as e:
+            logger.warning("Unable to parse sub datetime %s, trying to extract date...", date_published)
+            date_submitted, *_ = date_submitted.split("T")
+            article.date_submitted  = dateutil.parser.parse(date_submitted)
     else:
         article.date_submitted = article.date_published
     article.stage = submission_models.STAGE_PUBLISHED
@@ -500,6 +512,8 @@ def add_to_issue(article, root_path, export_path, struct, soup):
             issue_type = journal_models.IssueType.objects.get(
                 code="collection", journal=article.journal)
             _, year, *remaining = relative_path.split("/")
+            if not year.isdigit():
+                year = str(article.date_published.year)
             pub_title = getattr(soup, 'publication-title')
             if pub_title:
                 issue_title = "%s %s" % (pub_title.string, year)
