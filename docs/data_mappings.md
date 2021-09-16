@@ -24,6 +24,7 @@ A journal mapping is used when the source digital commons publication type of th
 | document.keywords                           | Article.keywords              |       |
 | document.document-type                      | Article.section.name          | *(1)  |
 | document.fields(name=publisher_name)        | Article.publisher\_name       |       |
+| document.fields(name=financial\_disclosure) | Article.competing\_interests  |       |
 
 *1: a custom document.field name can be used for publications that don't have a document.document-type. This is more
 common on Series or Event publications, but it is also available for journals.
