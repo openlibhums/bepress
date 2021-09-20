@@ -10,8 +10,10 @@ from bs4 import BeautifulSoup
 from django.conf import settings
 from django.core.files import File as DjangoFile
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.core.validators import URLValidator
 from django.db.utils import OperationalError
 import requests
+from requests.exceptions import SSLError
 
 from core import files
 from core.models import Account, Galley, SupplementaryFile
@@ -27,6 +29,8 @@ from plugins.bepress.plugin_settings import BEPRESS_PATH
 logger = get_logger(__name__)
 
 SECTION_FIELDS = ["track"]
+
+URL_VALIDATOR = URLValidator()
 
 
 def get_bepress_import_folders():
@@ -394,14 +398,32 @@ def import_supp_files(soup, article):
     soup_supp_files = getattr(soup, "supplemental-files")
     if soup_supp_files:
         for souped_file in soup_supp_files.findChildren("file"):
-            django_file = fetch_file(souped_file.url.string)
             mime_type = getattr(souped_file, "mime-type")
+            django_file = fetch_file(souped_file.url.string, mime_type)
 
             # HTML files are loaded as supplemental files
             if mime_type.string in files.HTML_MIMETYPES:
                 add_html_galley(django_file, article)
             else:
                 add_supp_file_to_article(django_file, souped_file, article)
+
+
+def relation_html_galley(soup, article):
+    """ Imports an HTML for a series object
+
+    Some Bepress journals objects can point to an HTML file in a field with the
+    name "relation". We import it as a galley when there is no regular galley
+    available (i.e. from supplemental files)
+    """
+    field = soup.fields.find(attrs={"name": "relation"})
+    if field and field.value:
+        value = field.value.string
+        URL_VALIDATOR(value)
+        response = unsafe_get_request(value)
+        mime_type = get_content_type_from_headers(response)
+        if mime_type in files.HTML_MIMETYPES:
+            django_file = fetch_file(value, mime_type, "article.html")
+            add_html_galley(django_file, article)
 
 
 def add_supp_file_to_article(supp_file, file_soup, article, label=None):
@@ -481,6 +503,7 @@ def import_articles(folder, stamped, journal, struct, default_section, section_k
                 import_supp_files(soup, article)
                 if pdf_file:
                     add_pdf_galley(pdf_file, article)
+                relation_html_galley(soup, article)
         except Exception as e:
             logger.error("Article import failed: %s", e)
             logger.exception(e)
@@ -602,13 +625,34 @@ def get_filename_from_headers(response):
         return '{uuid}.pdf'.format(uuid=uuid4())
 
 
-def fetch_file(url):
+def get_content_type_from_headers(response):
+    try:
+        header = response.headers["Content-Type"]
+        mime_type, _ = cgi.parse_header(header)
+        return mime_type
+    except Exception as e:
+        logger.warning(
+            "No Content-Type available in headers: %s" % response.headers,
+        )
+    return None
+
+
+def fetch_file(url, mime=None, filename=None):
     response = requests.get(url)
     response.raise_for_status()
-    filename = get_filename_from_headers(response)
+    if not filename:
+        filename = get_filename_from_headers(response)
     django_file = SimpleUploadedFile(
         filename,
         response.content,
-        "application/pdf",
+        mime or "application/pdf",
     )
     return django_file
+
+
+def unsafe_get_request(url):
+    """ Fetch a URL despite SSLErrors by attempting to request over http"""
+    try:
+        return requests.get(url, verify=False)
+    except SSLError:
+        return requests.get(url.replace("https", "http"))
