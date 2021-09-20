@@ -23,7 +23,8 @@ A journal mapping is used when the source digital commons publication type of th
 | document.fields(name=doi)                   | Article.doi                   |       |
 | document.keywords                           | Article.keywords              |       |
 | document.document-type                      | Article.section.name          | *(1)  |
-| document.fields(name=publisher_name)        | Article.publisher\_name       |       |
+| document.fields(name=publisher\_name)       | Article.publisher\_name       |       |
+| document.fields(name=peer\_reviewed)        | Article.peer\_reviewed        |       |
 | document.fields(name=financial\_disclosure) | Article.competing\_interests  |       |
 
 *1: a custom document.field name can be used for publications that don't have a document.document-type. This is more

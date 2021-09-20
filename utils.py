@@ -96,6 +96,7 @@ def create_article_record(dump_name, soup, journal, default_section, section_key
     metadata_notes(soup, article)
     metadata_publisher_notes(soup, article)
     metadata_publisher_name(soup, article)
+    metadata_peer_reviewed(soup, article)
     article.save()
 
     imported_article.article = article
@@ -259,6 +260,14 @@ def metadata_publisher_name(soup, article):
     field = soup.fields.find(attrs={"name": "publisher_name"})
     if field and field.value:
         article.publisher_name = field.value.string
+
+
+def metadata_peer_reviewed(soup, article):
+    field = soup.fields.find(attrs={"name": "peer_reviewed"})
+    if field and field.value == "true":
+        article.peer_reviewed = True
+    else:
+        article.peer_reviewed = False
 
 
 def metadata_authors(soup, article, dummy_accounts=False):
