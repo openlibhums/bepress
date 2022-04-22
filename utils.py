@@ -12,6 +12,7 @@ from django.core.files import File as DjangoFile
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.validators import URLValidator
 from django.db.utils import OperationalError
+from django.utils import timezone
 import requests
 from requests.exceptions import SSLError
 
@@ -73,8 +74,12 @@ def create_article_record(dump_name, soup, journal, default_section, section_key
         article.date_published = dateutil.parser.parse(date_published)
     except Exception as e:
         logger.warning("Unable to parse pub datetime %s, trying to extract date...", date_published)
-        date_published, *_ = date_published.split("T")
-        article.date_published = dateutil.parser.parse(date_published)
+        try:
+            date_published, *_ = date_published.split("T")
+            article.date_published = dateutil.parser.parse(date_published)
+        except Exception as e:
+            logger.warning("No publication date could be parsed")
+            article.date_published = timezone.now()
     if getattr(soup, 'submission-date'):
         submission_date = getattr(soup, 'submission-date').string
         try:

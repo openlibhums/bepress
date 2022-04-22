@@ -34,7 +34,7 @@
           {% for keyword in article.keywords %}
             <discipline>{{ keyword }}</discipline>
           {% endfor %}
-        </disciplines
+        </disciplines>
         <abstract>{{ article.abstract }}</abstract>
         <coverpage-url>{{ article.calc_url }}</coverpage-url>
         <fulltext-url>{{ article.fulltext_url }}</fulltext-url>
