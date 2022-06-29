@@ -28,6 +28,13 @@ Some exports won't include the PDF URL (`fulltext_url`), in those cases, this pl
 
 The spreadsheet needs to be exported as a CSV before you can import it into Janeway and then it be loaded from the Bepress plugin page in your Janeway installation. Janeway will generate a set of XML files, equivalent to the bepress archive format that will be saved under `src/files/plugins/bepress`
 
+### Importing from OAI
+Another alternative for those who don't have access to the archive files is to generate one using Bepress OAI endpoint. This feature is only supported via command line however and can take a long time, since it will generate an archive of the metadata for the entire institution.
+
+To run this command all you need is the OAI url for your institution and then run the command `import_bepress_from_oai`.
+
+The resulting metadata archives will be saved under `src/files/plugins/bepress` and will be displayed in the bepress plugin management page, ready to be loaded into any Janeway site.
+
 ### Metadata Bindings
 You can see a table on how the metadata is translated from the Bepress archives into Janeway in [this document](docs/data_mappings.md)
 
