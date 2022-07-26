@@ -50,7 +50,6 @@ def import_bepress_csv(request):
                 logger.debug("Parsed XML: %s", xml)
                 if path:
                     logger.info("Written XML to %s", path)
-                
 
             messages.add_message(
                 request, messages.SUCCESS,
@@ -75,10 +74,12 @@ def import_bepress_articles(request):
     section_id = request.POST.get('section_id', None)
     section_key = request.POST.get('section_key')
     if request.journal:
-        journal = request.journal
-    else:
+        site = request.journal
+    elif request.POST.get("journal_code"):
         journal_code = request.POST['journal_code']
-        journal = Journal.objects.get(code=journal_code)
+        site = Journal.objects.get(code=journal_code)
+    else:
+        site = request.press
 
     if section_id:
         default_section = get_object_or_404(Section,
@@ -88,8 +89,8 @@ def import_bepress_articles(request):
 
     if folder:
         stamped = pdf_type == "stamped"
-        utils.import_articles(
-            folder, stamped, journal,
+        utils.import_archive(
+            folder, stamped, site,
             struct, default_section, section_key,
         )
 
