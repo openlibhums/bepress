@@ -12,12 +12,14 @@ from django.core.files import File as DjangoFile
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.validators import URLValidator
 from django.db.utils import OperationalError
+from django.template.loader import get_template
 from django.utils import timezone
 import requests
 from requests.exceptions import SSLError
 
 from core import files
 from core.models import Account, Galley, SupplementaryFile
+from production.logic import save_galley
 from identifiers.models import Identifier
 from submission import models as submission_models
 from journal import models as journal_models
@@ -37,6 +39,10 @@ logger = get_logger(__name__)
 SECTION_FIELDS = ["track"]
 
 URL_VALIDATOR = URLValidator()
+
+
+class FakeRequest():
+    user = None
 
 
 def get_bepress_import_folders():
@@ -464,6 +470,51 @@ def relation_html_galley(soup, article):
             django_file = fetch_file(value, mime_type, "article.html")
             add_html_galley(django_file, article)
 
+def add_media_galley(soup, article):
+    """ Imports multimedia articles as galleys in Janeway
+
+    Bepress supports publishing an article with a linked multimedia galley
+    that may be hosted in another platform. These articles will have a pair
+    of custom fields with the names `multimedia_format` and `multimedia_url`
+    As an example, an article that has a linked youtube video would have the
+    following XML fields:
+      <field name="multimedia_format" type="string">
+        <value>youtube</value>
+      </field>
+      <field name="multimedia_url" type="string">
+        <value>//youtu.be/abcxyz</value>
+      </field>
+    """
+    format_soup = soup.fields.find(attrs={"name": "multimedia_format"})
+    url_soup = soup.fields.find(attrs={"name": "multimedia_url"})
+    if format_soup and format_soup.value.string == "youtube":
+        add_youtube_galley(url_soup.value.string, article)
+
+
+def add_youtube_galley(youtube_url, article):
+    """ Generates a JATS galley using the youtube URL to populate the body
+    :param youtube_url: A string pointing to the youtube video
+    :param article: The article for which we are generating the Galley
+    :return: An instance of core.models.Galley
+    """
+    body = YOUTUBE_JATS_TEMPLATE.format(url=youtube_url)
+    context = {
+        "article": article,
+        "body": body,
+        "include_declaration": True,
+    }
+    template = get_template('encoding/article_jats_1_2.xml')
+    rendered = template.render(context)
+    # clear empty lines due to if conditionals
+    cleaned = "\n".join([s for s in rendered.split("\n") if s.strip()])
+    django_file = SimpleUploadedFile(
+        "article.xml",
+        cleaned.encode("utf-8"),
+        "application/xml",
+    )
+
+    return save_galley(article, FakeRequest(), django_file, True)
+
 
 def add_supp_file_to_article(supp_file, file_soup, article, label=None):
     if not label and file_soup.description:
@@ -496,7 +547,7 @@ def add_pdf_galley(pdf_file, article):
             article=article,
             file=saved_file,
             type="pdf",
-            label="pdf",
+            label="PDF",
     )
     article.galley_set.add(galley)
 
@@ -531,7 +582,10 @@ def import_archive(folder, stamped, site, struct, default_section=None, section_
                 if struct == 'books':
                     book, chapter = import_book_chapter(soup, site)
                 else:
-                    import_article(soup, folder, stamped, site, struct, default_section, section_key)
+                    import_article(
+                        soup, root, folder, stamped, site,
+                        struct, default_section, section_key,
+                    )
 
 
         except Exception as e:
@@ -546,7 +600,8 @@ def import_archive(folder, stamped, site, struct, default_section=None, section_
         book.save()
 
 
-def import_article(soup, folder, stamped, site, struct, default_section, section_key):
+def import_article(soup, root, folder, stamped, site, struct, default_section, section_key):
+    path = os.path.join(BEPRESS_PATH, folder)
     article = create_article_record(
         folder, soup, site, default_section, section_key)
                 # Query the article to ensure correct attribute types (dates)
@@ -561,6 +616,7 @@ def import_article(soup, folder, stamped, site, struct, default_section, section
     if pdf_file:
         add_pdf_galley(pdf_file, article)
     relation_html_galley(soup, article)
+    add_media_galley(soup, article)
     return article
 
 def import_book_chapter(soup, site):
@@ -815,3 +871,9 @@ def parse_bepress_date(date_string):
         except Exception as e:
             logger.warning("No publication date could be parsed")
     return date_published
+
+YOUTUBE_JATS_TEMPLATE = """
+<fig>
+<media mimetype="video" position="anchor" specific-use="online" xlink:href="{url}"/>
+</fig>
+"""
