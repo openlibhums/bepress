@@ -26,6 +26,11 @@ from utils.logger import get_logger
 from plugins.bepress import const
 from plugins.bepress import models
 from plugins.bepress.plugin_settings import BEPRESS_PATH
+try:
+    from plugins.books import models as book_models
+    from plugins.books.files import save_file_to_disk
+except ModuleNotFoundError:
+    book_models = None
 
 logger = get_logger(__name__)
 
@@ -69,17 +74,9 @@ def create_article_record(dump_name, soup, journal, default_section, section_key
     article.title = soup.title.string
     article.journal = journal
     article.abstract = str(soup.abstract.string) if soup.abstract else ''
-    date_published = getattr(soup, 'publication-date').string
-    try:
-        article.date_published = dateutil.parser.parse(date_published)
-    except Exception as e:
-        logger.warning("Unable to parse pub datetime %s, trying to extract date...", date_published)
-        try:
-            date_published, *_ = date_published.split("T")
-            article.date_published = dateutil.parser.parse(date_published)
-        except Exception as e:
-            logger.warning("No publication date could be parsed")
-            article.date_published = timezone.now()
+    date_string = getattr(soup, 'publication-date').string
+    article.date_published = parse_bepress_date(date_string) or timezone.now()
+
     if getattr(soup, 'submission-date'):
         submission_date = getattr(soup, 'submission-date').string
         try:
@@ -342,6 +339,43 @@ def handle_corporate_author(bepress_author, article):
     )
 
 
+def import_book_contributors(soup, book=None, chapter=None, seq_offset=0):
+    bepress_authors = [a for a in soup.authors if a.string != "\n"]
+    contributors = []
+    for i, bepress_author in enumerate(bepress_authors, 1):
+        author_dict = {}
+        if bepress_author.fname:
+            author_dict["first_name"] = bepress_author.fname.string
+        else:
+            author_dict["first_name"] = " "
+        if bepress_author.lname:
+            author_dict["last_name"] = bepress_author.lname.string
+        else:
+            author_dict["last_name"] = " "
+        if bepress_author.mname:
+            author_dict["middle_name"] = bepress_author.mname.string
+        if bepress_author.institution:
+            author_dict["affiliation"] = bepress_author.institution.string
+
+        try:
+            author_dict["email"] = bepress_author.email.string
+        except AttributeError:
+            author_dict["email"] = None
+
+        sequence = seq_offset + i
+        contributor, created = book_models.Contributor.objects.get_or_create(
+            book=book,
+            defaults={"sequence": sequence},
+            **author_dict,
+        )
+        if created:
+            logger.info("Added author: %s to book: %s", contributor, book)
+        if chapter:
+            chapter.contributors.add(contributor)
+        contributors.append(contributor)
+    return contributors
+
+
 def handle_frozen_author(bepress_author, article, order, account=None):
     frozen_record, c = submission_models.FrozenAuthor.objects.update_or_create(
         article=article,
@@ -485,33 +519,132 @@ def add_html_galley(html_galley, article):
     article.galley_set.add(galley)
 
 
-def import_articles(folder, stamped, journal, struct, default_section, section_key):
-    logger.set_prefix(journal.code)
+def import_archive(folder, stamped, site, struct, default_section=None, section_key=None):
+    book = None
+    logger.set_prefix(site.code)
     path = os.path.join(BEPRESS_PATH, folder)
     for root, dirs, files_ in os.walk(path):
         try:
             if 'metadata.xml' in files_:
                 metadata_path = os.path.join(root, 'metadata.xml')
-
                 soup = soup_metadata(metadata_path)
-                try:
-                    pdf_file = fetch_remote_galley(soup, stamped)
-                except AttributeError:
-                    pdf_file = fetch_local_galley(root, files_, stamped)
+                if struct == 'books':
+                    book, chapter = import_book_chapter(soup, site)
+                else:
+                    import_article(soup, folder, stamped, site, struct, default_section, section_key)
 
-                article = create_article_record(
-                    folder, soup, journal, default_section, section_key)
 
-                # Query the article to ensure correct attribute types
-                article = submission_models.Article.objects.get(pk=article.pk)
-                add_to_issue(article, root, path, struct, soup)
-                import_supp_files(soup, article)
-                if pdf_file:
-                    add_pdf_galley(pdf_file, article)
-                relation_html_galley(soup, article)
         except Exception as e:
             logger.error("Article import failed: %s", e)
             logger.exception(e)
+    if book:
+        # There is no book metadata other than the title, so we have to
+        # default to the least recent chapter publication date
+        book.date_published = book.chapter_set.order_by(
+            "sequence",
+        ).first().date_published
+        book.save()
+
+
+def import_article(soup, folder, stamped, site, struct, default_section, section_key):
+    article = create_article_record(
+        folder, soup, site, default_section, section_key)
+                # Query the article to ensure correct attribute types (dates)
+    article = submission_models.Article.objects.get(pk=article.pk)
+    add_to_issue(article, root, path, struct, soup)
+    import_supp_files(soup, article)
+    try:
+        pdf_file = fetch_remote_galley(soup, stamped)
+    except AttributeError:
+        pdf_file = fetch_local_galley(root, files_, stamped)
+
+    if pdf_file:
+        add_pdf_galley(pdf_file, article)
+    relation_html_galley(soup, article)
+    return article
+
+def import_book_chapter(soup, site):
+    book = chapter = None
+    book_title = getattr(soup, 'publication-title').string
+    bepress_id = int(soup.articleid.string)
+    try:
+        imported = models.ImportedChapter.objects.get(bepress_id=bepress_id)
+        chapter = imported.chapter
+        book = imported.book
+    except models.ImportedChapter.DoesNotExist:
+        book, _ = book_models.Book.objects.get_or_create(title=book_title)
+        chapter_metadata = get_chapter_metadata(soup)
+        chapter = book_models.Chapter.objects.create(
+            book=book,
+            **chapter_metadata,
+        )
+        imported = models.ImportedChapter.objects.create(
+            book=book,
+            chapter=chapter,
+            bepress_id=bepress_id,
+        )
+    else:
+        # Update the chapter metadata
+        chapter_metadata = get_chapter_metadata(soup)
+        book_models.Chapter.objects.filter(
+            id=chapter.id).update(**chapter_metadata)
+
+    # Files
+    filename = import_chapter_files(chapter, soup)
+    if filename:
+        chapter.filename = filename
+        chapter.save()
+
+    # Authors
+    import_book_contributors(soup, book, chapter)
+
+    # Comments
+    comments = soup.fields.find(attrs={"name": "comments"})
+    if comments and comments.value:
+        chapter.publisher_notes.all().delete()
+        chapter.publisher_notes.create(note=comments.value.string)
+
+    # Book Metadata
+    publisher_field = soup.fields.find(attrs={"name": "publisher"})
+    if publisher_field:
+        book.publisher_name = publisher_field.value.string
+
+    city_field = soup.fields.find(attrs={"name": "city"})
+    if city_field:
+        book.publisher_loc = city_field.value.string
+    book.save()
+
+    return book, chapter
+
+
+def get_chapter_metadata(soup):
+    metadata = {}
+    metadata["title"] = soup.title.string
+    metadata["description"] = soup.abstract.string
+    metadata["sequence"] = metadata["number"] = soup.label.string
+
+    license_field = soup.fields.find(attrs={"name": "distribution_license"})
+    if license_field:
+        metadata["license_information"] = license_field.value.string
+
+
+    pub_date_string = getattr(soup, 'publication-date').string
+    metadata["date_published"] = parse_bepress_date(pub_date_string)
+
+    embargo_date = getattr(soup, 'embargo-date')
+    if embargo_date:
+        metadata["date_embargo"] = parse_bepress_date(embargo_date.string)
+
+    return metadata
+
+
+def import_chapter_files(chapter, soup):
+    url_soup = getattr(soup, "fulltext-url")
+    if url_soup:
+        url = url_soup.string
+        django_file = fetch_file(url)
+        filename = save_file_to_disk(django_file, chapter)
+        return filename
 
 
 def fetch_local_galley(root_path, sub_files, stamped):
@@ -525,6 +658,7 @@ def fetch_local_galley(root_path, sub_files, stamped):
     else:
         return None
 
+
 def add_to_issue(article, root_path, export_path, struct, soup):
     """ Adds the new article to the right issue. Issue created if not present
 
@@ -536,7 +670,7 @@ def add_to_issue(article, root_path, export_path, struct, soup):
     :param article: The submission.Article being imported
     :param root_path: The absolute path in which the metadata.xml was found
     :param export_path: The absolute path to the provided exported data
-    :param struct: (str) One of const.BEPRESS_STRUCTURES
+    :param struct: (str) One of const.BEPRESS_STRUCTURESujj
     :param soup: (bs4.Soup) Soupified metadata.xml
     """
     relative_path = root_path.replace(export_path, "")
@@ -647,6 +781,8 @@ def fetch_file(url, mime=None, filename=None):
     response.raise_for_status()
     if not filename:
         filename = get_filename_from_headers(response)
+    if not mime:
+        mime = get_content_type_from_headers(response)
     django_file = SimpleUploadedFile(
         filename,
         response.content,
@@ -661,3 +797,21 @@ def unsafe_get_request(url):
         return requests.get(url, verify=False)
     except SSLError:
         return requests.get(url.replace("https", "http"))
+
+
+def parse_bepress_date(date_string):
+    date_published = None
+    try:
+        date_published = dateutil.parser.parse(date_string)
+    except Exception as e:
+        logger.warning(
+            "Unable to parse pub datetime %s, trying to extract date...",
+            date_string,
+        )
+        try:
+            # Extract date from corrupt datetime
+            date_string, *_ = date_string.split("T")
+            date_published = dateutil.parser.parse(date_published)
+        except Exception as e:
+            logger.warning("No publication date could be parsed")
+    return date_published
