@@ -210,7 +210,7 @@ def metadata_license(soup, article):
         license_url = field.value.string
         if license_url.endswith("/"):
             license_url = license_url[:-1]
-        license_url.replace("http:", "https:")
+        license_url = license_url.replace("http:", "https:")
         article.license, c = submission_models.Licence.objects.get_or_create(
             journal=article.journal,
             url=license_url,
@@ -489,6 +489,29 @@ def add_media_galley(soup, article):
     url_soup = soup.fields.find(attrs={"name": "multimedia_url"})
     if format_soup and format_soup.value.string == "youtube":
         add_youtube_galley(url_soup.value.string, article)
+    native_url_soup = getattr(soup, "native-url", None)
+    if native_url_soup:
+        native_url = native_url_soup.string
+        # Make a head request to check the mime
+        response = requests.head(native_url, allow_redirects=True)
+        mimetype = get_content_type_from_headers(response)
+        # image/jpg missing from core image f
+        if mimetype and mimetype in files.IMAGE_MIMETYPES:
+            logger.info("Found native-url to be an image, importing as galley")
+            logger.info(native_url)
+            add_image_as_galley(native_url, article)
+
+
+def add_image_as_galley(url, article):
+    response = requests.get(url)
+    if response.ok:
+        filename = get_filename_from_headers(response)
+        django_file = SimpleUploadedFile(filename, response.content)
+        galley = add_image_galley(django_file, article)
+
+    else:
+        logger.error("Failed to retrieve image from url: %s" % response.status)
+
 
 
 def add_youtube_galley(youtube_url, article):
@@ -570,11 +593,34 @@ def add_html_galley(html_galley, article):
     article.galley_set.add(galley)
 
 
-def import_archive(folder, stamped, site, struct, default_section=None, section_key=None):
+def add_image_galley(image_file, article):
+    if article.galley_set.filter(type="image").exists():
+        return
+    saved_file = files.save_file_to_article(
+            image_file, article,
+            owner=None,
+            label="image",
+            is_galley=True,
+    )
+    galley = Galley.objects.create(
+            article=article,
+            file=saved_file,
+            type="image",
+            label="Image",
+    )
+    article.galley_set.add(galley)
+
+
+def import_archive(
+    folder, stamped, site, struct,
+    default_section=None, section_key=None, import_path=None,
+):
     book = None
     logger.set_prefix(site.code)
     path = os.path.join(BEPRESS_PATH, folder)
     for root, dirs, files_ in os.walk(path):
+        if import_path and import_path not in root:
+            continue
         try:
             if 'metadata.xml' in files_:
                 metadata_path = os.path.join(root, 'metadata.xml')
@@ -583,7 +629,7 @@ def import_archive(folder, stamped, site, struct, default_section=None, section_
                     book, chapter = import_book_chapter(soup, site)
                 else:
                     import_article(
-                        soup, root, folder, stamped, site,
+                        soup, root, files_, folder, stamped, site,
                         struct, default_section, section_key,
                     )
 
@@ -600,7 +646,7 @@ def import_archive(folder, stamped, site, struct, default_section=None, section_
         book.save()
 
 
-def import_article(soup, root, folder, stamped, site, struct, default_section, section_key):
+def import_article(soup, root, files_, folder, stamped, site, struct, default_section, section_key,):
     path = os.path.join(BEPRESS_PATH, folder)
     article = create_article_record(
         folder, soup, site, default_section, section_key)
