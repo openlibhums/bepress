@@ -611,11 +611,16 @@ def add_image_galley(image_file, article):
     article.galley_set.add(galley)
 
 
-def import_archive(folder, stamped, site, struct, default_section=None, section_key=None):
+def import_archive(
+    folder, stamped, site, struct,
+    default_section=None, section_key=None, import_path=None,
+):
     book = None
     logger.set_prefix(site.code)
     path = os.path.join(BEPRESS_PATH, folder)
     for root, dirs, files_ in os.walk(path):
+        if import_path and import_path not in root:
+            continue
         try:
             if 'metadata.xml' in files_:
                 metadata_path = os.path.join(root, 'metadata.xml')

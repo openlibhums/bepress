@@ -34,6 +34,11 @@ class Command(BaseCommand):
             '--section-field',
             help="Custom field used for denoting the section name",
         )
+        parser.add_argument(
+            '--path',
+            help=("Only import articles found under the given bepress path."
+                " Usefull for importing a single volume or article.")
+        )
         parser.add_argument('--dry-run', action="store_true", default=False)
 
     def handle(self, *args, **options):
@@ -42,6 +47,7 @@ class Command(BaseCommand):
             utils.import_archive(
                 options["archive_name"], options["stamped"],
                 site, options["structure_type"],
+                import_path=options["path"],
             )
         else:
             site = journal_models.Journal.objects.get(code=options["site_code"])
@@ -54,4 +60,5 @@ class Command(BaseCommand):
             utils.import_archive(
                 options["archive_name"], options["stamped"], site,
                 options["structure_type"], section, options["section_field"],
+                import_path=options["path"],
             )

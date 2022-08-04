@@ -16,16 +16,30 @@ logger = get_logger(__name__)
 METADATA_PREFIX = "document-export"
 
 
-def import_from_oai(client):
+def import_from_oai(client, set_=None, identifier=None):
     """ Imports bepress metadata from a given OAI client
     Metadata is written as XML to the location defined in settings as
     BEPRESS_PATH
     :param client: an instance of sicle.app.Sickle
     """
-    record_iterator = client.ListRecords(metadataPrefix=METADATA_PREFIX)
-    for record in record_iterator:
-        logger.info("Processing %s", record.header)
+    if identifier:
+        record = client.ListRecords(
+            metadataPrefix=METADATA_PREFIX,
+            identifier="identifier",
+        )
         generate_metadata_from_oai_record(record.raw)
+    else:
+        list_records_kwargs = {}
+        if set_:
+            list_records_kwargs["set"] = set_
+
+        record_iterator = client.ListRecords(
+            metadataPrefix=METADATA_PREFIX,
+            **list_records_kwargs,
+        )
+        for record in record_iterator:
+            logger.info("Processing %s", record.header)
+            generate_metadata_from_oai_record(record.raw)
 
 
 def generate_metadata_from_oai_record(record):
