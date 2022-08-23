@@ -328,10 +328,15 @@ def metadata_authors(soup, article, dummy_accounts=False):
                     author=account,
             )
 
-        # This field is frozen only
+        # These fields are frozen only
         if bepress_author.suffix:
             author_dict["name_suffix"] = bepress_author.suffix.string
-        handle_frozen_author(author_dict, article, i, account=account)
+        corresp = soup.fields.find(attrs={"name": "corresponding_authors"})
+        frozen = handle_frozen_author(author_dict, article, i, account=account)
+        if corresp and corresp.value:
+            if frozen.email in corresp.value.string:
+                frozen.display_email=True
+                frozen.save()
 
         if i == 0 and account:
             article.correspondence_author = account
@@ -389,6 +394,7 @@ def handle_frozen_author(bepress_author, article, order, account=None):
         author=account,
         defaults=bepress_author,
     )
+    return frozen_record
 
 
 def make_dummy_email(author):
