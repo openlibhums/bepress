@@ -526,6 +526,8 @@ def add_youtube_galley(youtube_url, article):
     :param article: The article for which we are generating the Galley
     :return: An instance of core.models.Galley
     """
+    if "youtu.be" in youtube_url:
+        youtube_url = youtube_url.replace("youtu.be", "youtube.com/embed")
     body = YOUTUBE_JATS_TEMPLATE.format(url=youtube_url)
     context = {
         "article": article,
