@@ -614,6 +614,7 @@ def add_image_galley(image_file, article):
 def import_archive(
     folder, stamped, site, struct,
     default_section=None, section_key=None, import_path=None,
+    custom_fields=None,
 ):
     book = None
     logger.set_prefix(site.code)
@@ -631,6 +632,7 @@ def import_archive(
                     import_article(
                         soup, root, files_, folder, stamped, site,
                         struct, default_section, section_key,
+                        custom_fields=custom_fields,
                     )
 
 
@@ -646,7 +648,12 @@ def import_archive(
         book.save()
 
 
-def import_article(soup, root, files_, folder, stamped, site, struct, default_section, section_key,):
+def import_article(
+    soup, root, files_,
+    folder, stamped, site,
+    struct, default_section, section_key,
+    custom_fields=None
+):
     path = os.path.join(BEPRESS_PATH, folder)
     article = create_article_record(
         folder, soup, site, default_section, section_key)
@@ -663,7 +670,44 @@ def import_article(soup, root, files_, folder, stamped, site, struct, default_se
         add_pdf_galley(pdf_file, article)
     relation_html_galley(soup, article)
     add_media_galley(soup, article)
+    if custom_fields:
+        update_custom_fields(soup, article, custom_fields)
     return article
+
+
+def update_custom_fields(soup, article, custom_fields):
+    """ Imports Bepress metadata into Janeway's custom submission fields
+    :param soup: An instance of bs4.BeautifulSoup representing the article XML
+    :param article: a Janeway submission.Article instance
+    :param custom_fields: a dict mapping a bepress field name to Janeway
+    :return: The updated Article
+    """
+    for i, (bepress_field, janeway_field) in enumerate(custom_fields.items()):
+        submission_field, _ = submission_models.Field.objects.get_or_create(
+            journal=article.journal,
+            name=janeway_field,
+            defaults=dict(
+                required=False,
+                kind="textarea",
+                display=True,
+                order=i,
+            )
+        )
+        field = soup.fields.find(attrs={"name": bepress_field})
+        if field and field.value:
+            logger.debug(
+                "Setting custom field %s to value:  '%s'",
+                submission_field, field.value.string,
+            )
+            submission_models.FieldAnswer.objects.update_or_create(
+                field=submission_field,
+                article=article,
+                defaults={
+                    "answer": field.value.string
+                }
+            )
+    return article
+
 
 def import_book_chapter(soup, site):
     book = chapter = None
