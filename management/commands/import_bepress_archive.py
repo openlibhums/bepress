@@ -39,6 +39,15 @@ class Command(BaseCommand):
             help=("Only import articles found under the given bepress path."
                 " Usefull for importing a single volume or article.")
         )
+        parser.add_argument(
+            '--custom-fields', '-c',
+            nargs=2, action="append",
+            help=(
+                "A key value pair of fields to map from bepress to Janeway"
+                " e.g: -c location Location -c data_availability "
+                " 'Data availability'"
+            ),
+        )
         parser.add_argument('--dry-run', action="store_true", default=False)
 
     def handle(self, *args, **options):
@@ -50,6 +59,9 @@ class Command(BaseCommand):
                 import_path=options["path"],
             )
         else:
+            custom_fields = {}
+            if options.get("custom_fields"):
+                custom_fields = dict(options["custom_fields"])
             site = journal_models.Journal.objects.get(code=options["site_code"])
             section = None
             if options.get("default_section"):
@@ -61,4 +73,5 @@ class Command(BaseCommand):
                 options["archive_name"], options["stamped"], site,
                 options["structure_type"], section, options["section_field"],
                 import_path=options["path"],
+                custom_fields=custom_fields,
             )
