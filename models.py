@@ -8,11 +8,16 @@ except ImportError:
 
 class ImportedArticle(models.Model):
     dump_name = models.CharField(max_length=255, blank=True, null=True)
-    article = models.ForeignKey('submission.Article', blank=True, null=True)
+    article = models.ForeignKey(
+        'submission.Article', blank=True, null=True,
+        on_delete=models.CASCADE,
+    )
     bepress_id = models.BigIntegerField()
-    journal = models.ForeignKey('journal.Journal')
+    journal = models.ForeignKey(
+        'journal.Journal',
+        on_delete=models.CASCADE,
+    )
     started = models.DateTimeField(default=timezone.now)
-
 
     class Meta:
         unique_together = (
@@ -22,9 +27,13 @@ class ImportedArticle(models.Model):
 
 class ImportedArticleAuthor(models.Model):
     article = models.ForeignKey(
-            "submission.Article", related_name="bepress_importedarticleauthor")
+        "submission.Article", related_name="bepress_importedarticleauthor",
+        on_delete=models.CASCADE,
+    )
     author = models.ForeignKey(
-            "core.Account", related_name="bepress_importedarticleauthor")
+        "core.Account", related_name="bepress_importedarticleauthor",
+        on_delete=models.CASCADE,
+    )
 
     class Meta:
         unique_together = (("article", "author"),)
