@@ -24,27 +24,6 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
-        if options["structure_type"] == "books":
-            site = Press.objects.first()
-            utils.import_archive(
-                options["archive_name"], options["stamped"],
-                site, options["structure_type"],
-            )
-        else:
-            site = journal_models.Journal.objects.get(code=options["site_code"])
-            section = None
-            if options.get("default_section"):
-                section = sub_models.Section.objects.get(
-                    id=options["default_section"],
-                    journal=site,
-                )
-            utils.import_archive(
-                options["archive_name"], options["stamped"], site,
-                options["structure_type"], section, options["section_field"],
-            )
-
-
-    def handle(self, *args, **options):
         client = Sickle(options["oai-url"])
         import_from_oai(client, set_=options.get("set"))
         print("Done.")
