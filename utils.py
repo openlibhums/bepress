@@ -128,15 +128,17 @@ def metadata_doi(soup, article):
 
 
 def metadata_keywords(soup, article):
-    keywords = [keyword.string for keyword in soup.find_all('keyword')]
-
-    for keyword in keywords:
-        try:
-            word, _ = submission_models.Keyword.objects.get_or_create(
-                word=keyword)
-            article.keywords.add(word)
-        except OperationalError as e:
-            logger.warning("Couldn't add keyword %s: %s" % (keyword, e))
+    for keyword_str in soup.find_all("keyword"):
+        # Looks like in an older implementation of bepress keywords were an
+        # unparsed string of words separated by a semi-colon
+        keywords = keyword_str.string.split(";")
+        for keyword in keywords:
+            try:
+                word, _ = submission_models.Keyword.objects.get_or_create(
+                    word=keyword)
+                article.keywords.add(word)
+            except OperationalError as e:
+                logger.warning("Couldn't add keyword %s: %s" % (keyword, e))
 
 
 def metadata_competing_interests(soup, article):
@@ -418,6 +420,7 @@ def fetch_remote_galley(soup, stamped=False):
         else:
             url += "?%s" % wants
 
+        logger.info("Fetching galley at %s", url)
         response = requests.get(url, stream=True)
         if response.status_code != 200:
             logger.error("Error fetching galley: %s", response.status_code)
