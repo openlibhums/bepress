@@ -49,7 +49,7 @@ def generate_metadata_from_oai_record(record):
         document = documents[0]
         path = document.xpath("//submission-path/text()")
         if path:
-            parsed = et.tostring(document)
+            parsed = et.tostring(document, encoding="unicode", pretty_print=True)
             xml = render_xml(parsed)
             file_path = pathlib.Path(BEPRESS_PATH, path[0], 'metadata.xml')
             logger.info("Writing to %s", file_path)
