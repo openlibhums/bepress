@@ -4,6 +4,7 @@ from io import TextIOWrapper
 from django.shortcuts import render, redirect, reverse, get_object_or_404
 from django.views.decorators.http import require_POST
 from django.contrib import messages
+from django.contrib.admin.views.decorators import staff_member_required
 
 from core import forms as core_forms
 from journal.models import Journal
@@ -20,8 +21,8 @@ logger = get_logger(__name__)
 CSV_MIMETYPES = ["application/csv", "text/csv"]
 
 
+@staff_member_required
 def index(request):
-
     folders = utils.get_bepress_import_folders()
     sections = Section.objects.filter(journal=request.journal)
 
@@ -34,6 +35,7 @@ def index(request):
     return render(request, template, context)
 
 
+@staff_member_required
 def import_bepress_csv(request):
     form = core_forms.FileUploadForm(mimetypes=CSV_MIMETYPES)
     if request.FILES and 'file' in request.FILES:
@@ -66,6 +68,7 @@ def import_bepress_csv(request):
     return render(request, template, context)
 
 
+@staff_member_required
 @require_POST
 def import_bepress_articles(request):
     folder = request.POST.get('folder', None)
@@ -93,7 +96,6 @@ def import_bepress_articles(request):
             folder, stamped, site,
             struct, default_section, section_key,
         )
-
 
     return redirect(
         reverse(
