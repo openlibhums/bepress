@@ -7,11 +7,11 @@ from utils import models
 PLUGIN_NAME = 'Bepress Import'
 DESCRIPTION = 'Plugin for importing bepress content to Janeway.'
 AUTHOR = 'Birkbeck Centre for Technology and Publishing'
-VERSION = '1.1'
+VERSION = '1.2'
 SHORT_NAME = 'bepress'
 DISPLAY_NAME = 'bepress'
 MANAGER_URL = 'bepress_index'
-JANEWAY_VERSION = "1.3.6"
+JANEWAY_VERSION = "1.7.0"
 
 BEPRESS_PATH = os.path.join(settings.BASE_DIR, 'files', 'plugins', 'bepress')
 
