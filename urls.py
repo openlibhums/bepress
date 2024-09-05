@@ -3,13 +3,13 @@ __author__ = "Martin Paul Eve & Andy Byers"
 __license__ = "AGPL v3"
 __maintainer__ = "Birkbeck Centre for Technology and Publishing"
 
-from django.conf.urls import url
+from django.urls import re_path
 
 from plugins.bepress import views
 
 urlpatterns = [
-    url(r'^$', views.index, name='bepress_index'),
-    url(r'^index/$', views.index, name='bepress_index'),
-    url(r'^import/$', views.import_bepress_articles, name='bepress_import'),
-    url(r'^csv_import/$', views.import_bepress_csv, name='bepress_csv_import'),
+    re_path(r'^$', views.index, name='bepress_index'),
+    re_path(r'^index/$', views.index, name='bepress_index'),
+    re_path(r'^import/$', views.import_bepress_articles, name='bepress_import'),
+    re_path(r'^csv_import/$', views.import_bepress_csv, name='bepress_csv_import'),
 ]
