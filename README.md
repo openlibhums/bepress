@@ -9,7 +9,7 @@ There are 3 supported [Digital Commons structure types](https://bepress.com/refe
 
 ## Installation Instructions
 1. Clone this repository into the Janeway plugins folder (`path/to/janeway/src/plugins/`)
-2. Run the plugin installation command: `python3 src/manage.py install_plugins typesetting`.
+2. Run the plugin installation command: `python3 src/manage.py install_plugins bepress`.
 3. Run the migration command `python3 src/manage.py migrate bepress`
 4. Restart your webserver
 
@@ -31,7 +31,7 @@ The spreadsheet needs to be exported as a CSV before you can import it into Jane
 ### Importing from OAI
 Another alternative for those who don't have access to the archive files is to generate one using Bepress OAI endpoint. This feature is only supported via command line however and can take a long time, since it will generate an archive of the metadata for the entire institution.
 
-To run this command all you need is the OAI url for your institution and then run the command `import_bepress_from_oai`.
+To run this command all you need is the OAI url for your institution (do not include parameters) and then run the command `import_bepress_from_oai`.
 
 The resulting metadata archives will be saved under `src/files/plugins/bepress` and will be displayed in the bepress plugin management page, ready to be loaded into any Janeway site.
 
