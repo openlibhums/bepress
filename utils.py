@@ -20,9 +20,10 @@ from requests.exceptions import SSLError
 from core import files
 from core.models import Account, Galley, SupplementaryFile
 from production.logic import save_galley
-from identifiers.models import Identifier
+from identifiers.models import Identifier, DOI_RE
 from submission import models as submission_models
 from journal import models as journal_models
+from utils.orcid import COMPILED_ORCID_REGEX
 from utils.logger import get_logger
 
 from plugins.bepress import const
@@ -47,7 +48,7 @@ class FakeRequest():
 
 def get_bepress_import_folders():
     if os.path.exists(BEPRESS_PATH):
-        return os.listdir(BEPRESS_PATH)
+        return sorted(os.listdir(BEPRESS_PATH))
     else:
         return []
 
@@ -101,6 +102,7 @@ def create_article_record(dump_name, soup, journal, default_section, section_key
     metadata_doi(soup, article)
     metadata_keywords(soup, article)
     metadata_authors(soup, article)
+    metadata_orcid(soup, article)
     metadata_license(soup, article)
     metadata_citation(soup, article)
     metadata_pages(soup, article)
@@ -120,11 +122,13 @@ def create_article_record(dump_name, soup, journal, default_section, section_key
 def metadata_doi(soup, article):
     field = soup.fields.find(attrs={"name": "doi"})
     if field and field.value:
-        Identifier.objects.get_or_create(
-            id_type="doi",
-            article=article,
-            identifier=field.value.string
-        )
+        result = DOI_RE.search(field.value.string)
+        if result:
+            Identifier.objects.get_or_create(
+                id_type="doi",
+                article=article,
+                identifier=result.group(0)
+            )
 
 
 def metadata_keywords(soup, article):
@@ -402,6 +406,22 @@ def handle_frozen_author(bepress_author, article, order, account=None):
 def make_dummy_email(author):
     hashed = hashlib.md5(str(author).encode("utf-8")).hexdigest()
     return "{0}@{1}".format(hashed, settings.DUMMY_EMAIL_DOMAIN)
+
+
+def metadata_orcid(soup, article):
+    """
+    For single-author articles, we can find and use the ORCID field.
+    To do: work out how to support ORCID for multi-author articles.
+    """
+    field = soup.fields.find(attrs={"name": "orcid"})
+    if not field:
+        field = soup.fields.find(attrs={"name": "orcid_id"})
+    if field and field.value and article.frozenauthor_set.count() == 1:
+        result = COMPILED_ORCID_REGEX.search(field.value.string)
+        if result:
+            author = article.frozenauthor_set.first()
+            author.frozen_orcid = result.group(0)
+            author.save()
 
 
 def fetch_remote_galley(soup, stamped=False):
@@ -827,7 +847,7 @@ def add_to_issue(article, root_path, export_path, struct, soup):
     :param article: The submission.Article being imported
     :param root_path: The absolute path in which the metadata.xml was found
     :param export_path: The absolute path to the provided exported data
-    :param struct: (str) One of const.BEPRESS_STRUCTURESujj
+    :param struct: (str) One of const.BEPRESS_STRUCTURES
     :param soup: (bs4.Soup) Soupified metadata.xml
     """
     relative_path = root_path.replace(export_path, "")
