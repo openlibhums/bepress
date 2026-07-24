@@ -101,18 +101,19 @@ def create_article_record(dump_name, soup, journal, default_section, section_key
 
     article.save()
 
-    metadata_doi(soup, article)
+    if soup.fields:
+        metadata_doi(soup, article)
+        metadata_orcid(soup, article)
+        metadata_license(soup, article)
+        metadata_citation(soup, article)
+        metadata_publisher_name(soup, article)
+        metadata_competing_interests(soup, article)
+        metadata_notes(soup, article)
+        metadata_pages(soup, article)
+        metadata_publisher_notes(soup, article)
+        metadata_peer_reviewed(soup, article)
     metadata_keywords(soup, article)
     metadata_authors(soup, article)
-    metadata_orcid(soup, article)
-    metadata_license(soup, article)
-    metadata_citation(soup, article)
-    metadata_pages(soup, article)
-    metadata_competing_interests(soup, article)
-    metadata_notes(soup, article)
-    metadata_publisher_notes(soup, article)
-    metadata_publisher_name(soup, article)
-    metadata_peer_reviewed(soup, article)
     article.save()
 
     imported_article.article = article
@@ -339,7 +340,10 @@ def metadata_authors(soup, article, dummy_accounts=False):
         # These fields are frozen only
         if bepress_author.suffix:
             author_dict["name_suffix"] = bepress_author.suffix.string
-        corresp = soup.fields.find(attrs={"name": "corresponding_authors"})
+        if soup.fields:
+            corresp = soup.fields.find(attrs={"name": "corresponding_authors"})
+        else:
+            corresp = None
         frozen = handle_frozen_author(author_dict, article, i, account=account)
         if corresp and corresp.value:
             if frozen.email in corresp.value.string:
@@ -664,6 +668,7 @@ def import_archive(
     folder, stamped, site, struct,
     default_section=None, section_key=None, import_path=None,
     custom_fields=None, local_files_only=False,
+    skip_supp_files=False,
 ):
     book = None
     logger.set_prefix(site.code)
@@ -683,6 +688,7 @@ def import_archive(
                         struct, default_section, section_key,
                         custom_fields=custom_fields,
                         local_files_only=local_files_only,
+                        skip_supp_files=skip_supp_files,
                     )
 
 
@@ -703,6 +709,7 @@ def import_article(
     folder, stamped, site,
     struct, default_section, section_key,
     custom_fields=None, local_files_only=False,
+    skip_supp_files=False,
 ):
     path = os.path.join(BEPRESS_PATH, folder)
     article = create_article_record(
@@ -710,7 +717,8 @@ def import_article(
                 # Query the article to ensure correct attribute types (dates)
     article = submission_models.Article.objects.get(pk=article.pk)
     add_to_issue(article, root, path, struct, soup)
-    import_supp_files(soup, article, root, files_, local_files_only)
+    if not skip_supp_files:
+        import_supp_files(soup, article, root, files_, local_files_only)
     if local_files_only:
         pdf_file = fetch_local_galley(root, files_, stamped)
     else:
@@ -722,8 +730,9 @@ def import_article(
     if pdf_file:
         logger.info(f'Adding galley {pdf_file}')
         add_pdf_galley(pdf_file, article)
-    relation_html_galley(soup, article)
-    add_media_galley(soup, article)
+    if soup.fields:
+        relation_html_galley(soup, article)
+        add_media_galley(soup, article)
     if custom_fields:
         update_custom_fields(soup, article, custom_fields)
     return article

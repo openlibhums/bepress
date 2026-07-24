@@ -58,6 +58,11 @@ class Command(BaseCommand):
             action="store_true",
             help="Only load local files without checking remote ones.",
         )
+        parser.add_argument(
+            "--skip-supp-files",
+            action="store_true",
+            help="Do not load supplementary files.",
+        )
 
     def handle(self, *args, **options):
         if options["structure_type"] == "books":
@@ -84,4 +89,5 @@ class Command(BaseCommand):
                 import_path=options["path"],
                 custom_fields=custom_fields,
                 local_files_only=options["local_files_only"],
+                skip_supp_files=options["skip_supp_files"],
             )
