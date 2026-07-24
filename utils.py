@@ -1,4 +1,6 @@
 import cgi
+import csv
+import datetime
 import dateutil
 import hashlib
 import logging
@@ -1041,3 +1043,52 @@ YOUTUBE_JATS_TEMPLATE = """
 <media mimetype="video" position="anchor" specific-use="online" xlink:href="{url}"/>
 </fig>
 """
+
+
+def report_local_file(soup, root, files_, folder_path):
+    soup_supp_files = getattr(soup, "supplemental-files")
+    if soup_supp_files:
+        for souped_file in soup_supp_files.findChildren("file"):
+            archive_name = souped_file.find("archive-name")
+            upload_name = souped_file.find("upload-name")
+            filename = get_local_supplemental_filename(
+                archive_name.string,
+                upload_name.string,
+                files_,
+            )
+            if filename:
+                rel_path = os.path.relpath(
+                    os.path.join(root, filename),
+                    start=folder_path,
+                )
+                return rel_path.split("/")
+
+
+def report_local_files(folder):
+    folder_path = os.path.join(BEPRESS_PATH, folder)
+    timestamp = datetime.datetime.now().strftime("%Y_%m_%d")
+    out_path = os.path.join(folder_path, f'supp_files_{ timestamp }.csv')
+    with open(out_path, "w") as out_file:
+        fieldnames = [
+            'journal',
+            'volume',
+            'issue',
+            'article',
+            'file',
+            'to_import',
+        ]
+        writer = csv.DictWriter(out_file, fieldnames=fieldnames)
+        writer.writeheader()
+        for root, dirs, files_ in os.walk(folder_path):
+            try:
+                if 'metadata.xml' in files_:
+                    metadata_path = os.path.join(root, 'metadata.xml')
+                    soup = soup_metadata(metadata_path)
+                    supp_file = report_local_file(soup, root, files_, folder_path)
+                    if supp_file:
+                        writer.writerow(dict(zip(fieldnames, supp_file)))
+            except Exception as e:
+                logger.error("Local file report failed: %s", e)
+                logger.exception(e)
+
+        logger.info(f"Reporting supplementary files in {out_path}")
