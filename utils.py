@@ -456,7 +456,7 @@ def fetch_remote_galley(soup, stamped=False):
     return None
 
 
-def import_supp_files(soup, article):
+def import_supp_files(soup, article, root, files_, local_files_only=False):
     """ Imports supplemental files
     XML Sample
     <supplemental-files>
@@ -473,7 +473,23 @@ def import_supp_files(soup, article):
     if soup_supp_files:
         for souped_file in soup_supp_files.findChildren("file"):
             mime_type = getattr(souped_file, "mime-type")
-            django_file = fetch_file(souped_file.url.string, mime_type)
+            if local_files_only:
+                archive_name = souped_file.find("archive-name")
+                upload_name = souped_file.find("upload-name")
+                django_file = fetch_local_supplemental_file(
+                    archive_name.string if archive_name else "",
+                    upload_name.string if upload_name else "",
+                    root,
+                    files_,
+                )
+            else:
+                django_file = fetch_file(souped_file.url.string, mime_type)
+
+            if not django_file:
+                logger.warning(f"Failed to find supplemental file: {souped_file}")
+                logger.warning(f"Local files available: {files_}")
+                breakpoint()
+                return
 
             # HTML files are loaded as supplemental files
             if mime_type.string in files.HTML_MIMETYPES:
@@ -645,7 +661,7 @@ def add_image_galley(image_file, article):
 def import_archive(
     folder, stamped, site, struct,
     default_section=None, section_key=None, import_path=None,
-    custom_fields=None,
+    custom_fields=None, local_files_only=False,
 ):
     book = None
     logger.set_prefix(site.code)
@@ -664,6 +680,7 @@ def import_archive(
                         soup, root, files_, folder, stamped, site,
                         struct, default_section, section_key,
                         custom_fields=custom_fields,
+                        local_files_only=local_files_only,
                     )
 
 
@@ -683,7 +700,7 @@ def import_article(
     soup, root, files_,
     folder, stamped, site,
     struct, default_section, section_key,
-    custom_fields=None
+    custom_fields=None, local_files_only=False,
 ):
     path = os.path.join(BEPRESS_PATH, folder)
     article = create_article_record(
@@ -691,13 +708,17 @@ def import_article(
                 # Query the article to ensure correct attribute types (dates)
     article = submission_models.Article.objects.get(pk=article.pk)
     add_to_issue(article, root, path, struct, soup)
-    import_supp_files(soup, article)
-    try:
-        pdf_file = fetch_remote_galley(soup, stamped)
-    except AttributeError:
+    import_supp_files(soup, article, root, files_, local_files_only)
+    if local_files_only:
         pdf_file = fetch_local_galley(root, files_, stamped)
+    else:
+        try:
+            pdf_file = fetch_remote_galley(soup, stamped)
+        except AttributeError:
+            pdf_file = fetch_local_galley(root, files_, stamped)
 
     if pdf_file:
+        logger.info(f'Adding galley {pdf_file}')
         add_pdf_galley(pdf_file, article)
     relation_html_galley(soup, article)
     add_media_galley(soup, article)
@@ -836,6 +857,17 @@ def fetch_local_galley(root_path, sub_files, stamped):
         return None
 
 
+def fetch_local_supplemental_file(archive_name, upload_name, root_path, sub_files):
+    filename = get_local_supplemental_filename(archive_name, upload_name, sub_files)
+
+    if filename:
+        path = os.path.join(root_path, filename)
+        f = open(path, "rb")
+        return DjangoFile(f)
+    else:
+        return None
+
+
 def add_to_issue(article, root_path, export_path, struct, soup):
     """ Adds the new article to the right issue. Issue created if not present
 
@@ -909,23 +941,34 @@ def add_to_issue(article, root_path, export_path, struct, soup):
 def get_filename_from_local(sub_files, stamped=False):
     galley_filename = None
 
-    if len(sub_files) > 1:
+    if len(sub_files) >= 1:
         if stamped:
             if 'stamped.pdf' in sub_files:
                 galley_filename = 'stamped.pdf'
             else:
                 stamped = False
-                galley_filename = get_filename_from_local(sub_files, pdf_type)
+                galley_filename = get_filename_from_local(sub_files, stamped)
         else:
             candidates = [
                 f for f in sub_files
                 if f not in {"stamped.pdf", "metadata.xml", "auto_convert.pdf"}
-                or not f.endswith("pdf")
+                and f.endswith("pdf")
             ]
             if candidates:
                 galley_filename = candidates[0]
+    if not galley_filename:
+        logger.warning(f"No galleys found in {sub_files}" )
 
     return galley_filename
+
+
+def get_local_supplemental_filename(archive_name, upload_name, sub_files):
+    for name in [archive_name, upload_name]:
+        if name:
+            for file in sub_files:
+                if name in file:
+                    return file
+    return None
 
 
 def get_filename_from_headers(response):

@@ -11,7 +11,12 @@ STRUCTURE_CHOICES = {"journal", "series", "events", "books"}
 
 
 class Command(BaseCommand):
-    """Imports a bepress archive into Janeway"""
+    """Imports a bepress archive into Janeway
+
+    Example usage:
+    python src/manage.py import_bepress_archive johs voljournals/johs journal
+
+    """
 
     help = "Imports a bepress archive into Janeway"
 
@@ -48,7 +53,11 @@ class Command(BaseCommand):
                 " 'Data availability'"
             ),
         )
-        parser.add_argument('--dry-run', action="store_true", default=False)
+        parser.add_argument(
+            "--local-files-only",
+            action="store_true",
+            help="Only load local files without checking remote ones.",
+        )
 
     def handle(self, *args, **options):
         if options["structure_type"] == "books":
@@ -74,4 +83,5 @@ class Command(BaseCommand):
                 options["structure_type"], section, options["section_field"],
                 import_path=options["path"],
                 custom_fields=custom_fields,
+                local_files_only=options["local_files_only"],
             )
