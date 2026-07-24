@@ -717,6 +717,8 @@ def import_article(
                 # Query the article to ensure correct attribute types (dates)
     article = submission_models.Article.objects.get(pk=article.pk)
     add_to_issue(article, root, path, struct, soup)
+    order = int(root.split("/")[-1])
+    set_article_order(article, order)
     if not skip_supp_files:
         import_supp_files(soup, article, root, files_, local_files_only)
     if local_files_only:
@@ -947,6 +949,20 @@ def add_to_issue(article, root_path, export_path, struct, soup):
         logger.info("Added to issue {}".format(issue))
 
         return issue
+
+
+def set_article_order(article, order):
+    if not article.issue or not article.section:
+        return
+
+    journal_models.ArticleOrdering.objects.update_or_create(
+        article=article,
+        issue=article.issue,
+        section=article.section,
+        defaults={
+            "order": order,
+        },
+    )
 
 
 def get_filename_from_local(sub_files, stamped=False):
