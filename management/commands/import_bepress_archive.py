@@ -63,6 +63,10 @@ class Command(BaseCommand):
             action="store_true",
             help="Do not load supplementary files.",
         )
+        parser.add_argument(
+            "--supp-file-filter-csv",
+            help="CSV file to tell the importer which supp files to import.",
+        )
 
     def handle(self, *args, **options):
         if options["structure_type"] == "books":
@@ -90,4 +94,5 @@ class Command(BaseCommand):
                 custom_fields=custom_fields,
                 local_files_only=options["local_files_only"],
                 skip_supp_files=options["skip_supp_files"],
+                supp_file_filter_csv=options["supp_file_filter_csv"],
             )
