@@ -43,6 +43,15 @@ SECTION_FIELDS = ["track"]
 
 URL_VALIDATOR = URLValidator()
 
+SUPP_FILE_FILTER_CSV_FIELDS = [
+    'journal',
+    'volume',
+    'issue',
+    'article',
+    'file',
+    'to_import',
+]
+
 
 class FakeRequest():
     user = None
@@ -462,7 +471,14 @@ def fetch_remote_galley(soup, stamped=False):
     return None
 
 
-def import_supp_files(soup, article, root, files_, local_files_only=False):
+def import_supp_files(
+    soup,
+    article,
+    root,
+    files_,
+    local_files_only=False,
+    filter_dict=None,
+):
     """ Imports supplemental files
     XML Sample
     <supplemental-files>
@@ -487,14 +503,12 @@ def import_supp_files(soup, article, root, files_, local_files_only=False):
                     upload_name.string if upload_name else "",
                     root,
                     files_,
+                    filter_dict=filter_dict,
                 )
             else:
                 django_file = fetch_file(souped_file.url.string, mime_type)
 
             if not django_file:
-                logger.warning(f"Failed to find supplemental file: {souped_file}")
-                logger.warning(f"Local files available: {files_}")
-                breakpoint()
                 return
 
             # HTML files are loaded as supplemental files
@@ -664,15 +678,40 @@ def add_image_galley(image_file, article):
     article.galley_set.add(galley)
 
 
+def get_supp_file_filter_dict(archive_folder, csv_path):
+    path = os.path.join(BEPRESS_PATH, csv_path)
+    with open(path, "r") as csv_ref:
+        reader = csv.DictReader(csv_ref)
+        supp_file_filter_dict = {}
+        for row in reader:
+            journal, volume, issue, article, file = SUPP_FILE_FILTER_CSV_FIELDS[:-1]
+            filepath = os.path.join(
+                BEPRESS_PATH,
+                archive_folder,
+                row['volume'],
+                row['issue'],
+                row['article'],
+                row['file'],
+            )
+            supp_file_filter_dict[filepath] = row['to_import'] == "y"
+            assert row['to_import'] in ['y', 'n']
+    return supp_file_filter_dict
+
+
 def import_archive(
     folder, stamped, site, struct,
     default_section=None, section_key=None, import_path=None,
     custom_fields=None, local_files_only=False,
     skip_supp_files=False,
+    supp_file_filter_csv="",
 ):
     book = None
     logger.set_prefix(site.code)
     path = os.path.join(BEPRESS_PATH, folder)
+    if supp_file_filter_csv:
+        supp_file_filter_dict = get_supp_file_filter_dict(folder, supp_file_filter_csv)
+    else:
+        supp_file_filter_dict = None
     for root, dirs, files_ in os.walk(path):
         if import_path and import_path not in root:
             continue
@@ -689,6 +728,7 @@ def import_archive(
                         custom_fields=custom_fields,
                         local_files_only=local_files_only,
                         skip_supp_files=skip_supp_files,
+                        supp_file_filter_dict=supp_file_filter_dict,
                     )
 
 
@@ -710,6 +750,7 @@ def import_article(
     struct, default_section, section_key,
     custom_fields=None, local_files_only=False,
     skip_supp_files=False,
+    supp_file_filter_dict=None,
 ):
     path = os.path.join(BEPRESS_PATH, folder)
     article = create_article_record(
@@ -720,7 +761,14 @@ def import_article(
     order = int(root.split("/")[-1])
     set_article_order(article, order)
     if not skip_supp_files:
-        import_supp_files(soup, article, root, files_, local_files_only)
+        import_supp_files(
+            soup,
+            article,
+            root,
+            files_,
+            local_files_only,
+            filter_dict=supp_file_filter_dict,
+        )
     if local_files_only:
         pdf_file = fetch_local_galley(root, files_, stamped)
     else:
@@ -870,13 +918,36 @@ def fetch_local_galley(root_path, sub_files, stamped):
         return None
 
 
-def fetch_local_supplemental_file(archive_name, upload_name, root_path, sub_files):
+def fetch_local_supplemental_file(
+    archive_name,
+    upload_name,
+    root_path,
+    sub_files,
+    filter_dict=None
+):
     filename = get_local_supplemental_filename(archive_name, upload_name, sub_files)
 
     if filename:
         path = os.path.join(root_path, filename)
+        if filter_dict:
+            try:
+                to_import = filter_dict[path]
+            except KeyError:
+                logger.error(f"Supp file CSV missing info for {root_path}")
+                logger.error(f"Missing: {filename}")
+                to_import = False
+            if not to_import:
+                return None
         f = open(path, "rb")
         return DjangoFile(f)
+    else:
+        return None
+
+
+def attempt_to_make_timezone_aware(dt):
+    if dt:
+        # We use 12 to avoid changing the date when the time is 00:00 with no tz
+        return timezone.make_aware(dt.replace(hour=12))
     else:
         return None
 
@@ -941,7 +1012,9 @@ def add_to_issue(article, root_path, export_path, struct, soup):
             logger.info("Created new issue {}".format(issue))
 
         if year:
-            issue.date = dateutil.parser.parse(year)
+
+            parsed_year = dateutil.parser.parse(year)
+            issue.date = attempt_to_make_timezone_aware(parsed_year)
         issue.save()
         issue.articles.add(article)
         article.primary_issue = issue
@@ -995,6 +1068,9 @@ def get_local_supplemental_filename(archive_name, upload_name, sub_files):
             for file in sub_files:
                 if name in file:
                     return file
+
+    logger.error(f"Failed to find supplemental file: {archive_name}")
+    logger.error(f"Local files available: {sub_files}")
     return None
 
 
