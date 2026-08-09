@@ -705,6 +705,7 @@ def import_archive(
     custom_fields=None, local_files_only=False,
     skip_supp_files=False,
     supp_file_filter_csv="",
+    galley=None,
 ):
     book = None
     logger.set_prefix(site.code)
@@ -731,6 +732,7 @@ def import_archive(
                         local_files_only=local_files_only,
                         skip_supp_files=skip_supp_files,
                         supp_file_filter_dict=supp_file_filter_dict,
+                        galley=galley,
                     )
 
 
@@ -753,6 +755,7 @@ def import_article(
     custom_fields=None, local_files_only=False,
     skip_supp_files=False,
     supp_file_filter_dict=None,
+    galley=None,
 ):
     path = os.path.join(BEPRESS_PATH, folder)
     article = create_article_record(
@@ -772,12 +775,12 @@ def import_article(
             filter_dict=supp_file_filter_dict,
         )
     if local_files_only:
-        pdf_file = fetch_local_galley(root, files_, stamped)
+        pdf_file = fetch_local_galley(root, files_, stamped, galley)
     else:
         try:
             pdf_file = fetch_remote_galley(soup, stamped)
         except AttributeError:
-            pdf_file = fetch_local_galley(root, files_, stamped)
+            pdf_file = fetch_local_galley(root, files_, stamped, galley)
 
     if pdf_file:
         logger.info(f'Adding galley {pdf_file}')
@@ -908,8 +911,13 @@ def import_chapter_files(chapter, soup):
         return filename
 
 
-def fetch_local_galley(root_path, sub_files, stamped):
-    filename = get_filename_from_local(sub_files, stamped)
+def fetch_local_galley(root_path, sub_files, stamped, galley=None):
+    filename = get_filename_from_local(
+        sub_files,
+        stamped=stamped,
+        galley=galley,
+        root_path=root_path,
+    )
 
     if filename:
         pdf_path = os.path.join(root_path, filename)
@@ -1045,17 +1053,68 @@ def set_article_order(article, order):
     )
 
 
-def get_filename_from_local(sub_files, stamped=False):
+def get_filename_from_local(
+    sub_files,
+    stamped=False,
+    galley=None,
+    known_supp_files=None,
+    root_path=None,
+):
     galley_filename = None
 
-    if len(sub_files) >= 1:
+    if not galley:
         if stamped:
+            galley = "stamped"
+
+    if not known_supp_files:
+        known_supp_files = []
+
+    if len(sub_files) >= 1:
+        if galley == "stamped":
             if 'stamped.pdf' in sub_files:
                 galley_filename = 'stamped.pdf'
             else:
                 stamped = False
-                galley_filename = get_filename_from_local(sub_files, stamped)
+                galley_filename = get_filename_from_local(
+                    sub_files,
+                    stamped=stamped,
+                    root_path=root_path,
+                )
+        elif galley == "auto_convert":
+            if 'auto_convert.pdf' in sub_files:
+                galley_filename = 'auto_convert.pdf'
+            else:
+                galley_filename = get_filename_from_local(
+                    sub_files,
+                    galley="any_pdf",
+                    root_path=root_path,
+                )
+        elif galley == "first_pdf_or_docx":
+            # Files are sorted to create idempotent galley selection.
+            candidates = [
+                f for f in sorted(sub_files)
+                if (
+                    f not in ["metadata.xml"] + known_supp_files
+                ) and (
+                    (
+                        f.endswith("pdf")
+                    ) or (
+                        f.endswith("doc")
+                    ) or (
+                        f.endswith("docx")
+                    )
+                )
+            ]
+            if candidates:
+                galley_filename = candidates[0]
+            else:
+                galley_filename = get_filename_from_local(
+                    sub_files,
+                    galley="any_docx",
+                    root_path=root_path,
+                )
         else:
+            # Old behavior before --galley option was introduced
             candidates = [
                 f for f in sub_files
                 if f not in {"stamped.pdf", "metadata.xml", "auto_convert.pdf"}
@@ -1064,7 +1123,11 @@ def get_filename_from_local(sub_files, stamped=False):
             if candidates:
                 galley_filename = candidates[0]
     if not galley_filename:
-        logger.warning(f"No galleys found in {sub_files}" )
+        if root_path:
+            rel_path = os.path.relpath(root_path, start=BEPRESS_PATH)
+            logger.warning(f"No galleys found in {rel_path}: {sub_files}" )
+        else:
+            logger.warning(f"No galleys found in {sub_files}" )
 
     return galley_filename
 
@@ -1178,7 +1241,13 @@ YOUTUBE_JATS_TEMPLATE = """
 """
 
 
-def report_local_files_for_article(soup, root, files_, folder_path):
+def report_local_supp_files(
+    soup,
+    root,
+    files_,
+    folder_path,
+    base_supp_filter_dict=None,
+):
     soup_supp_files = getattr(soup, "supplemental-files")
     supp_files = []
     if soup_supp_files:
@@ -1196,21 +1265,40 @@ def report_local_files_for_article(soup, root, files_, folder_path):
                     os.path.join(root, filename),
                     start=folder_path,
                 )
-                supp_files.append(rel_path.split("/"))
+                supp_file = rel_path.split("/")
+
+                # Try to get 'to_import' from the base CSV
+                if base_supp_filter_dict:
+                    try:
+                        filter_key = os.path.join(folder_path, *supp_file)
+                        if base_supp_filter_dict[filter_key]:
+                            base_to_import = "y"
+                        else:
+                            base_to_import = "n"
+                        supp_file.append(base_to_import)
+                    except KeyError:
+                        pass
+
+                supp_files.append(supp_file)
                 continue
+
     return supp_files
 
 
-def report_all_local_files(folder, base_csv=""):
+def report_all_local_files(folder, galley, base_supp_csv=""):
     """
+    Creates a report of local supplementary files.
+
     folder: the main archive folder, not including the journal folder
     """
     folder_path = os.path.join(BEPRESS_PATH, folder)
     timestamp = datetime.datetime.now().strftime("%Y_%m_%d")
-    out_path = os.path.join(folder_path, f'supp_files_{ timestamp }.csv')
-    if base_csv:
-        base_filter_dict = get_supp_file_filter_dict(folder, base_csv)
-    fieldnames = [
+    supp_out_path = os.path.join(folder_path, f'supp_files_{ timestamp }.csv')
+    galley_out_path = os.path.join(folder_path, f'galley_files_{ timestamp }.csv')
+    base_supp_filter_dict = None
+    if base_supp_csv:
+        base_supp_filter_dict = get_supp_file_filter_dict(folder, base_supp_csv)
+    supp_fieldnames = [
         'journal',
         'volume',
         'issue',
@@ -1218,36 +1306,55 @@ def report_all_local_files(folder, base_csv=""):
         'file',
         'to_import',
     ]
-    with open(out_path, "w") as out_file:
-        writer = csv.DictWriter(out_file, fieldnames=fieldnames)
-        writer.writeheader()
-        for root, dirs, files_ in os.walk(folder_path):
-            try:
-                if 'metadata.xml' in files_:
-                    metadata_path = os.path.join(root, 'metadata.xml')
-                    soup = soup_metadata(metadata_path)
-                    supp_files = report_local_files_for_article(
-                        soup,
-                        root,
-                        files_,
-                        folder_path,
+    galley_fieldnames = [
+        'journal',
+        'volume',
+        'issue',
+        'article',
+        'file',
+    ]
+    supp_out_file = open(supp_out_path, "w")
+    galley_out_file = open(galley_out_path, "w")
+    supp_writer = csv.DictWriter(supp_out_file, fieldnames=supp_fieldnames)
+    galley_writer = csv.DictWriter(galley_out_file, fieldnames=galley_fieldnames)
+    supp_writer.writeheader()
+    galley_writer.writeheader()
+    for root, dirs, files_ in os.walk(folder_path):
+        try:
+            if 'metadata.xml' in files_:
+                metadata_path = os.path.join(root, 'metadata.xml')
+                soup = soup_metadata(metadata_path)
+
+                supp_files = report_local_supp_files(
+                    soup,
+                    root,
+                    files_,
+                    folder_path,
+                    base_supp_filter_dict,
+                )
+                for supp_file in supp_files:
+                    supp_writer.writerow(dict(zip(supp_fieldnames, supp_file)))
+
+                known_supp_files = [supp_file[4] for supp_file in supp_files]
+                galley_file = get_filename_from_local(
+                    files_,
+                    galley=galley,
+                    known_supp_files=known_supp_files,
+                    root_path=root,
+                )
+                if galley_file:
+                    rel_path = os.path.relpath(
+                        os.path.join(root, galley_file),
+                        start=folder_path,
                     )
+                    galley_writer.writerow(
+                        dict(zip(galley_fieldnames, rel_path.split("/")))
+                    )
+        except Exception as e:
+            logger.error("Local file report failed: %s", e)
+            logger.exception(e)
 
-                    for supp_file in supp_files:
-                        # Try to get 'to_import' from the base CSV
-                        if base_csv:
-                            try:
-                                filter_key = os.path.join(folder_path, *supp_file)
-                                if base_filter_dict[filter_key]:
-                                    base_to_import = "y"
-                                else:
-                                    base_to_import = "n"
-                                supp_file.append(base_to_import)
-                            except KeyError:
-                                pass
-                        writer.writerow(dict(zip(fieldnames, supp_file)))
-            except Exception as e:
-                logger.error("Local file report failed: %s", e)
-                logger.exception(e)
-
-        logger.info(f"Reporting supplementary files in {out_path}")
+    supp_out_file.close()
+    logger.info(f"Reporting supplementary files in {supp_out_path}")
+    galley_out_file.close()
+    logger.info(f"Reporting galley files in {galley_out_path}")

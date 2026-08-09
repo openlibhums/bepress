@@ -4,10 +4,16 @@ from django.core.management.base import BaseCommand
 from journal import models as journal_models
 from press.models import Press
 from submission import models as sub_models
+from utils.logger import get_logger
 
 from plugins.bepress import utils
 
+
+logger = get_logger(__name__)
+
+
 STRUCTURE_CHOICES = {"journal", "series", "events", "books"}
+GALLEY_CHOICES = {"stamped", "auto_convert", "first_pdf_or_docx"}
 
 
 class Command(BaseCommand):
@@ -31,6 +37,11 @@ class Command(BaseCommand):
             help="The Digital Commons structure type used in the archive",
         )
         parser.add_argument('--stamped', action="store_true", default=False)
+        parser.add_argument(
+            '--galley',
+            choices=GALLEY_CHOICES,
+            help="What type of local galley to load.",
+        )
         parser.add_argument(
             '--default-section',
             help="The ID of the section to use when one can't be found",
@@ -87,6 +98,13 @@ class Command(BaseCommand):
                     id=options["default_section"],
                     journal=site,
                 )
+            if options["stamped"] and options["galley"]:
+                logger.error(
+                    self.style.ERROR(
+                        "Only one of '--stamped' or '--galley' should be used."
+                    )
+                )
+                return
             utils.import_archive(
                 options["archive_name"], options["stamped"], site,
                 options["structure_type"], section, options["section_field"],
@@ -95,4 +113,5 @@ class Command(BaseCommand):
                 local_files_only=options["local_files_only"],
                 skip_supp_files=options["skip_supp_files"],
                 supp_file_filter_csv=options["supp_file_filter_csv"],
+                galley=options["galley"],
             )
