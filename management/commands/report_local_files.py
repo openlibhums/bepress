@@ -16,8 +16,14 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument(
-            "folder", help="The name of the folder under files/plugins/bepress"
+            "folder",
+            help="The name of the archive folder under files/plugins/bepress "
+            "not including the journal folder"
+        )
+        parser.add_argument(
+            "--base-csv",
+            help="Earlier report CSV to use as a base.",
         )
 
     def handle(self, *args, **options):
-        utils.report_local_files(options["folder"])
+        utils.report_all_local_files(options["folder"], options["base_csv"])
