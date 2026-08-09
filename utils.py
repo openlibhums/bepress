@@ -782,7 +782,7 @@ def import_article(
     if pdf_file:
         logger.info(f'Adding galley {pdf_file}')
         add_pdf_galley(pdf_file, article)
-    if soup.fields:
+    if soup.fields and not local_files_only:
         relation_html_galley(soup, article)
         add_media_galley(soup, article)
     if custom_fields:
@@ -1122,6 +1122,9 @@ def get_content_type_from_headers(response):
         mime_type, _ = cgi.parse_header(header)
         return mime_type
     except Exception as e:
+        logger.warning(
+            f"Error when getting {response.request.url}",
+        )
         logger.warning(
             "No Content-Type available in headers: %s" % response.headers,
         )
