@@ -19,6 +19,8 @@ Bepress offers various mechanisms for exporting your metadata:
 ### Importing from an Amazon S3 backup
 If you have enabled the Amazon S3 backup service with Bepress, you will have access to a backup containing your articles files and metadata in XML format. In order to ingest that backup into Janeway, you will need to load that backup directory into Janeway's file system under `src/files/plugins/bepress`.
 
+Some bepress export archives include supplemental files which are not public on bepress. These de facto private files can be filtered out with a CSV. You can run the command `report_local_files` to generate a CSV in the proper format. Have someone familiar with the journal content put `y` or `n` in the field `to_import` and then pass the path to the file, relative to the archive folder, with `--supp-file-filter-csv`.
+
 ### Importing from a spreadsheet
 If you don't have access to a bepress archive via Amazon S3, you can instead download a [batch export](https://bepress.com/reference_guide_dc/batch-upload-export-revise/) from your bepress installation.
 The metadata is not as complete as with an XML archive (e.g submission dates are not present) But it has enough metadata to recreate the articles in Janeway.

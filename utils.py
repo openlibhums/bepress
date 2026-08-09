@@ -679,22 +679,23 @@ def add_image_galley(image_file, article):
 
 
 def get_supp_file_filter_dict(archive_folder, csv_path):
-    path = os.path.join(BEPRESS_PATH, csv_path)
+    path = os.path.join(BEPRESS_PATH, archive_folder, csv_path)
     with open(path, "r") as csv_ref:
         reader = csv.DictReader(csv_ref)
         supp_file_filter_dict = {}
         for row in reader:
-            journal, volume, issue, article, file = SUPP_FILE_FILTER_CSV_FIELDS[:-1]
+            journal, volume, issue, article, file, to_import = SUPP_FILE_FILTER_CSV_FIELDS
             filepath = os.path.join(
                 BEPRESS_PATH,
                 archive_folder,
-                row['volume'],
-                row['issue'],
-                row['article'],
-                row['file'],
+                row[journal],
+                row[volume],
+                row[issue],
+                row[article],
+                row[file],
             )
-            supp_file_filter_dict[filepath] = row['to_import'] == "y"
-            assert row['to_import'] in ['y', 'n']
+            supp_file_filter_dict[filepath] = row[to_import] == "y"
+            assert row[to_import] in ["y", "n"]
     return supp_file_filter_dict
 
 
@@ -709,7 +710,8 @@ def import_archive(
     logger.set_prefix(site.code)
     path = os.path.join(BEPRESS_PATH, folder)
     if supp_file_filter_csv:
-        supp_file_filter_dict = get_supp_file_filter_dict(folder, supp_file_filter_csv)
+        main_archive_folder = folder.split("/")[0]
+        supp_file_filter_dict = get_supp_file_filter_dict(main_archive_folder, supp_file_filter_csv)
     else:
         supp_file_filter_dict = None
     for root, dirs, files_ in os.walk(path):
@@ -925,7 +927,12 @@ def fetch_local_supplemental_file(
     sub_files,
     filter_dict=None
 ):
-    filename = get_local_supplemental_filename(archive_name, upload_name, sub_files)
+    filename = get_local_supplemental_filename(
+        archive_name,
+        upload_name,
+        sub_files,
+        root_path,
+    )
 
     if filename:
         path = os.path.join(root_path, filename)
@@ -1062,15 +1069,37 @@ def get_filename_from_local(sub_files, stamped=False):
     return galley_filename
 
 
-def get_local_supplemental_filename(archive_name, upload_name, sub_files):
+def get_bepress_truncated_filename_candidates(filename):
+    leave_alone_length = 45
+    if len(filename) <= leave_alone_length:
+        return [filename]
+    else:
+        possible_names = set()
+        for i in reversed(range(50, 65)):
+            name, ending = os.path.splitext(filename)
+            name = name[:i-len(ending)]
+            possible_names.add(name + ending)
+        return possible_names
+
+
+def get_local_supplemental_filename(
+    archive_name,
+    upload_name,
+    sub_files,
+    root_path,
+):
+    files_to_check = sorted(sub_files, reverse=True)
     for name in [archive_name, upload_name]:
         if name:
-            for file in sub_files:
-                if name in file:
-                    return file
+            possible_names = get_bepress_truncated_filename_candidates(name)
+            for name in possible_names:
+                for file in files_to_check:
+                    if name in file:
+                        return file
 
-    logger.error(f"Failed to find supplemental file: {archive_name}")
-    logger.error(f"Local files available: {sub_files}")
+    rel_path = os.path.relpath(root_path, start=BEPRESS_PATH)
+    logger.error(f"Failed to find supplemental file in {rel_path}: {archive_name}")
+    logger.error(f"Local files checked: {files_to_check}")
     return None
 
 
@@ -1146,8 +1175,9 @@ YOUTUBE_JATS_TEMPLATE = """
 """
 
 
-def report_local_file(soup, root, files_, folder_path):
+def report_local_files_for_article(soup, root, files_, folder_path):
     soup_supp_files = getattr(soup, "supplemental-files")
+    supp_files = []
     if soup_supp_files:
         for souped_file in soup_supp_files.findChildren("file"):
             archive_name = souped_file.find("archive-name")
@@ -1156,28 +1186,36 @@ def report_local_file(soup, root, files_, folder_path):
                 archive_name.string,
                 upload_name.string,
                 files_,
+                root,
             )
             if filename:
                 rel_path = os.path.relpath(
                     os.path.join(root, filename),
                     start=folder_path,
                 )
-                return rel_path.split("/")
+                supp_files.append(rel_path.split("/"))
+                continue
+    return supp_files
 
 
-def report_local_files(folder):
+def report_all_local_files(folder, base_csv=""):
+    """
+    folder: the main archive folder, not including the journal folder
+    """
     folder_path = os.path.join(BEPRESS_PATH, folder)
     timestamp = datetime.datetime.now().strftime("%Y_%m_%d")
     out_path = os.path.join(folder_path, f'supp_files_{ timestamp }.csv')
+    if base_csv:
+        base_filter_dict = get_supp_file_filter_dict(folder, base_csv)
+    fieldnames = [
+        'journal',
+        'volume',
+        'issue',
+        'article',
+        'file',
+        'to_import',
+    ]
     with open(out_path, "w") as out_file:
-        fieldnames = [
-            'journal',
-            'volume',
-            'issue',
-            'article',
-            'file',
-            'to_import',
-        ]
         writer = csv.DictWriter(out_file, fieldnames=fieldnames)
         writer.writeheader()
         for root, dirs, files_ in os.walk(folder_path):
@@ -1185,8 +1223,25 @@ def report_local_files(folder):
                 if 'metadata.xml' in files_:
                     metadata_path = os.path.join(root, 'metadata.xml')
                     soup = soup_metadata(metadata_path)
-                    supp_file = report_local_file(soup, root, files_, folder_path)
-                    if supp_file:
+                    supp_files = report_local_files_for_article(
+                        soup,
+                        root,
+                        files_,
+                        folder_path,
+                    )
+
+                    for supp_file in supp_files:
+                        # Try to get 'to_import' from the base CSV
+                        if base_csv:
+                            try:
+                                filter_key = os.path.join(folder_path, *supp_file)
+                                if base_filter_dict[filter_key]:
+                                    base_to_import = "y"
+                                else:
+                                    base_to_import = "n"
+                                supp_file.append(base_to_import)
+                            except KeyError:
+                                pass
                         writer.writerow(dict(zip(fieldnames, supp_file)))
             except Exception as e:
                 logger.error("Local file report failed: %s", e)
