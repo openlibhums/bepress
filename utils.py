@@ -143,6 +143,25 @@ def metadata_doi(soup, article):
             )
 
 
+def metadata_pubid(article, root):
+    """
+    Create a Janeway Identifier with type="pubid" using key info
+    from the bepress article path.
+    This lets you create redirects in your web server configuration.
+    """
+    split_path = root.split("/")
+    vol = split_path[-3]
+    iss = split_path[-2]
+    bepress_issue_order = split_path[-1]
+    pubid = f"{vol}-{iss}-{bepress_issue_order}"
+    # expected example: "vol9-iss3-11"
+    Identifier.objects.get_or_create(
+        id_type="pubid",
+        article=article,
+        identifier=pubid,
+    )
+
+
 def metadata_keywords(soup, article):
     for keyword_str in soup.find_all("keyword"):
         # Looks like in an older implementation of bepress keywords were an
@@ -765,6 +784,7 @@ def import_article(
     add_to_issue(article, root, path, struct, soup)
     order = int(root.split("/")[-1])
     set_article_order(article, order)
+    metadata_pubid(article, root)
     if not skip_supp_files:
         import_supp_files(
             soup,
