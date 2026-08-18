@@ -70,7 +70,14 @@ def soup_metadata(metadata_path):
     return BeautifulSoup(metadata_content, "lxml")
 
 
-def create_article_record(dump_name, soup, journal, default_section, section_key):
+def create_article_record(
+    dump_name,
+    soup,
+    journal,
+    default_section,
+    section_key,
+    default_license="",
+):
     imported_article, created = models.ImportedArticle.objects.get_or_create(
         dump_name=dump_name,
         bepress_id=soup.articleid.string,
@@ -113,7 +120,7 @@ def create_article_record(dump_name, soup, journal, default_section, section_key
     if soup.fields:
         metadata_doi(soup, article)
         metadata_orcid(soup, article)
-        metadata_license(soup, article)
+        metadata_license(soup, article, default_license=default_license)
         metadata_citation(soup, article)
         metadata_publisher_name(soup, article)
         metadata_competing_interests(soup, article)
@@ -247,10 +254,16 @@ def metadata_section(soup, article, default_section, section_key=None):
             '{article} no section found'.format(article=article.title))
 
 
-def metadata_license(soup, article):
+def metadata_license(soup, article, default_license=""):
     field = soup.fields.find(attrs={"name": "distribution_license"})
     if field:
         license_url = field.value.string
+    elif default_license:
+        license_url = default_license
+    else:
+        license_url = ""
+
+    if license_url:
         if license_url.endswith("/"):
             license_url = license_url[:-1]
         license_url = license_url.replace("http:", "https:")
@@ -272,9 +285,11 @@ def metadata_license(soup, article):
                 journal=article.journal,
                 short_name="Copyright",
             )
-            logger.info("No license in metadata, defaulting to copyright")
+            logger.info(
+                "No license in metadata, no default license. Defaulting to copyright"
+            )
         except submission_models.Licence.DoesNotExist:
-            logger.warning("No license in metadata, leaving blank")
+            logger.warning("No license in metadata, no default license. Leaving blank")
 
     rights_field = soup.fields.find(attrs={"name": "rights"})
     if rights_field and rights_field.value:
@@ -726,7 +741,10 @@ def get_supp_file_filter_dict(archive_folder, csv_path):
 
 def import_archive(
     folder, stamped, site, struct,
-    default_section=None, section_key=None, import_path=None,
+    default_section=None,
+    section_key=None,
+    default_license="",
+    import_path=None,
     custom_fields=None, local_files_only=False,
     skip_supp_files=False,
     supp_file_filter_csv="",
@@ -753,6 +771,7 @@ def import_archive(
                     import_article(
                         soup, root, files_, folder, stamped, site,
                         struct, default_section, section_key,
+                        default_license=default_license,
                         custom_fields=custom_fields,
                         local_files_only=local_files_only,
                         skip_supp_files=skip_supp_files,
@@ -777,6 +796,7 @@ def import_article(
     soup, root, files_,
     folder, stamped, site,
     struct, default_section, section_key,
+    default_license="",
     custom_fields=None, local_files_only=False,
     skip_supp_files=False,
     supp_file_filter_dict=None,
@@ -784,8 +804,10 @@ def import_article(
 ):
     path = os.path.join(BEPRESS_PATH, folder)
     article = create_article_record(
-        folder, soup, site, default_section, section_key)
-                # Query the article to ensure correct attribute types (dates)
+        folder, soup, site, default_section, section_key,
+        default_license=default_license,
+    )
+    # Query the article to ensure correct attribute types (dates)
     article = submission_models.Article.objects.get(pk=article.pk)
     add_to_issue(article, root, path, struct, soup)
     order = int(root.split("/")[-1])

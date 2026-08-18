@@ -51,6 +51,10 @@ class Command(BaseCommand):
             help="Custom field used for denoting the section name",
         )
         parser.add_argument(
+            '--default-license',
+            help="The URL of the license to use when one can't be found",
+        )
+        parser.add_argument(
             '--path',
             help=("Only import articles found under the given bepress path."
                 " Usefull for importing a single volume or article.")
@@ -108,6 +112,7 @@ class Command(BaseCommand):
             utils.import_archive(
                 options["archive_name"], options["stamped"], site,
                 options["structure_type"], section, options["section_field"],
+                default_license=options["default_license"],
                 import_path=options["path"],
                 custom_fields=custom_fields,
                 local_files_only=options["local_files_only"],
