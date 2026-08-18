@@ -148,6 +148,12 @@ def metadata_pubid(article, root):
     Create a Janeway Identifier with type="pubid" using key info
     from the bepress article path.
     This lets you create redirects in your web server configuration.
+    Example nginx redirect:
+
+    location ~ ^/(?<journal_code>[a-zA-Z]*)/vol(?<volume>[0-9]*)/iss(?<issue>[0-9]*)/(?<order>[0-9]) {
+        return 301 /$journal_code/article/pubid/vol$volume-iss$issue-$order/;
+    }
+
     """
     split_path = root.split("/")
     vol = split_path[-3]
@@ -1332,6 +1338,9 @@ def report_all_local_files(folder, galley, base_supp_csv=""):
         'issue',
         'article',
         'file',
+        'state',
+        'pub_date',
+        'license',
     ]
     supp_out_file = open(supp_out_path, "w")
     galley_out_file = open(galley_out_path, "w")
@@ -1367,9 +1376,14 @@ def report_all_local_files(folder, galley, base_supp_csv=""):
                         os.path.join(root, galley_file),
                         start=folder_path,
                     )
-                    galley_writer.writerow(
-                        dict(zip(galley_fieldnames, rel_path.split("/")))
-                    )
+                    data = dict(zip(galley_fieldnames, rel_path.split("/")))
+                    data["state"] = soup.state.string if soup.state else ""
+                    pub_date = soup.find("publication-date")
+                    data["pub_date"] = pub_date.string if pub_date else ""
+                    if soup.fields:
+                        license_field = soup.fields.find(attrs={"name": "distribution_license"})
+                        data["license"] = license_field.value.string if license_field else ""
+                    galley_writer.writerow(data)
         except Exception as e:
             logger.error("Local file report failed: %s", e)
             logger.exception(e)
