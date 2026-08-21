@@ -739,6 +739,10 @@ def get_supp_file_filter_dict(archive_folder, csv_path):
     return supp_file_filter_dict
 
 
+def is_published(soup):
+    return soup.state.string == "published"
+
+
 def import_archive(
     folder, stamped, site, struct,
     default_section=None,
@@ -768,6 +772,11 @@ def import_archive(
                 if struct == 'books':
                     book, chapter = import_book_chapter(soup, site)
                 else:
+                    if not is_published(soup):
+                        logger.warning(
+                            f"Skipping article because it is not published: {root}"
+                        )
+                        continue
                     import_article(
                         soup, root, files_, folder, stamped, site,
                         struct, default_section, section_key,
