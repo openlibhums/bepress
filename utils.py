@@ -20,7 +20,13 @@ import requests
 from requests.exceptions import SSLError
 
 from core import files
-from core.models import Account, Galley, SupplementaryFile
+from core.models import (
+    Account,
+    Galley,
+    SupplementaryFile,
+    WorkflowElement,
+    WorkflowLog,
+)
 from production.logic import save_galley
 from identifiers.models import Identifier, DOI_RE
 from submission import models as submission_models
@@ -743,6 +749,26 @@ def is_published(soup):
     return soup.state.string == "published"
 
 
+def get_workflow_elements(journal):
+    """
+    Get the last two stages so imported articles
+    can be modified more easily with extra galleys or metadata
+    using the workflow nav bar.
+    """
+    return [
+        WorkflowElement.objects.get(
+            journal=journal,
+            element_name="typesetting",
+            stage=submission_models.STAGE_TYPESETTING_PLUGIN,
+        ),
+        WorkflowElement.objects.get(
+            journal=journal,
+            element_name="prepublication",
+            stage=submission_models.STAGE_READY_FOR_PUBLICATION,
+        ),
+    ]
+
+
 def import_archive(
     folder, stamped, site, struct,
     default_section=None,
@@ -762,6 +788,7 @@ def import_archive(
         supp_file_filter_dict = get_supp_file_filter_dict(main_archive_folder, supp_file_filter_csv)
     else:
         supp_file_filter_dict = None
+    workflow_elements = get_workflow_elements(site)
     for root, dirs, files_ in os.walk(path):
         if import_path and import_path not in root:
             continue
@@ -786,6 +813,7 @@ def import_archive(
                         skip_supp_files=skip_supp_files,
                         supp_file_filter_dict=supp_file_filter_dict,
                         galley=galley,
+                        workflow_elements=workflow_elements,
                     )
 
 
@@ -801,6 +829,15 @@ def import_archive(
         book.save()
 
 
+def set_workflow_history(article, workflow_elements):
+    if workflow_elements:
+        for element in workflow_elements:
+            WorkflowLog.objects.get_or_create(
+                article=article,
+                element=element,
+            )
+
+
 def import_article(
     soup, root, files_,
     folder, stamped, site,
@@ -810,6 +847,7 @@ def import_article(
     skip_supp_files=False,
     supp_file_filter_dict=None,
     galley=None,
+    workflow_elements=None,
 ):
     path = os.path.join(BEPRESS_PATH, folder)
     article = create_article_record(
@@ -821,6 +859,7 @@ def import_article(
     add_to_issue(article, root, path, struct, soup)
     order = int(root.split("/")[-1])
     set_article_order(article, order)
+    set_workflow_history(article, workflow_elements)
     metadata_pubid(article, root)
     if not skip_supp_files:
         import_supp_files(
