@@ -633,12 +633,10 @@ def add_supp_file_to_article(supp_file, file_soup, article, label=None):
         label = file_soup.description.string
     else:
         label = "Supplementary File"
-    try:
-        SupplementaryFile.objects.get(
-            supp=article,
-            file__original_filename=supp_file.name,
-        )
-    except SupplementaryFile.DoesNotExist:
+    if not SupplementaryFile.objects.filter(
+        supp=article,
+        file__original_filename=supp_file.name,
+    ).exists():
         saved_file = files.save_file_to_article(
             supp_file, article,
             owner=None,
