@@ -366,47 +366,21 @@ def metadata_authors(soup, article, dummy_accounts=False):
             author_dict["middle_name"] = bepress_author.mname.string
         if bepress_author.institution:
             author_dict["institution"] = bepress_author.institution.string
-
-        try:
-            email = bepress_author.email.string
-        except AttributeError:
-            email = None
-        account = None
-
-        if not email and dummy_accounts:
-            email = make_dummy_email(bepress_author)
-
-        if email:
-            account, _ = Account.objects.get_or_create(
-                email=email,
-                defaults=author_dict,
-            )
-        if account:
-            author_order, created = submission_models.ArticleAuthorOrder \
-                .objects.get_or_create(
-                    article=article, author=account,
-                    defaults={"order": i}
-            )
-            models.ImportedArticleAuthor.objects.get_or_create(
-                    article=article,
-                    author=account,
-            )
-
-        # These fields are frozen only
+        if bepress_author.email:
+            author_dict["frozen_email"] = bepress_author.email.string
+        else:
+            author_dict["frozen_email"] = ""
         if bepress_author.suffix:
             author_dict["name_suffix"] = bepress_author.suffix.string
         if soup.fields:
             corresp = soup.fields.find(attrs={"name": "corresponding_authors"})
         else:
             corresp = None
-        frozen = handle_frozen_author(author_dict, article, i, account=account)
+        frozen = handle_frozen_author(author_dict, article, i)
         if corresp and corresp.value:
             if frozen.email in corresp.value.string:
                 frozen.display_email=True
                 frozen.save()
-
-        if i == 0 and account:
-            article.correspondence_author = account
 
 
 def handle_corporate_author(bepress_author, article):

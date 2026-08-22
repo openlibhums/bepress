@@ -1,3 +1,5 @@
+import warnings
+
 from django.db import models
 from django.utils import timezone
 try:
@@ -34,6 +36,10 @@ class ImportedArticleAuthor(models.Model):
         "core.Account", related_name="bepress_importedarticleauthor",
         on_delete=models.CASCADE,
     )
+
+    def __init__(self, *args, **kwargs):
+        warnings.warn("Deprecated, as imported authors no longer get accounts.")
+        super().__init__(*args, **kwargs)
 
     class Meta:
         unique_together = (("article", "author"),)
