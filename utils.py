@@ -177,7 +177,9 @@ def metadata_pubid(article, root):
     Identifier.objects.get_or_create(
         id_type="pubid",
         article=article,
-        identifier=pubid,
+        defaults={
+            "identifier": pubid,
+        }
     )
 
 
