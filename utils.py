@@ -633,16 +633,21 @@ def add_supp_file_to_article(supp_file, file_soup, article, label=None):
         label = file_soup.description.string
     else:
         label = "Supplementary File"
-
-    saved_file = files.save_file_to_article(
-        supp_file, article,
-        owner=None,
-        label=label,
-        is_galley=False,
-    )
-    supp_obj = SupplementaryFile.objects.create(file=saved_file)
-    article.supplementary_files.add(supp_obj)
-    return supp_obj
+    try:
+        SupplementaryFile.objects.get(
+            supp=article,
+            file__original_filename=supp_file.name,
+        )
+    except SupplementaryFile.DoesNotExist:
+        saved_file = files.save_file_to_article(
+            supp_file, article,
+            owner=None,
+            label=label,
+            is_galley=False,
+        )
+        supp_obj = SupplementaryFile.objects.create(file=saved_file)
+        article.supplementary_files.add(supp_obj)
+        return supp_obj
 
 
 def add_pdf_galley(pdf_file, article):
