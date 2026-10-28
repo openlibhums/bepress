@@ -11,7 +11,7 @@ class TestFilesHandler(TestCase):
         expected = TEST_ARTICLE_XML
         result_iter = csv_handler.csv_to_xml(data, commit=False)
         result, _ = next(result_iter)
-        self.assertEquals(expected.replace("\n", ''), result.replace("\n",''))
+        self.assertEqual(expected.replace("\n", ''), result.replace("\n",''))
 
     def test_parse_article_metadata(self):
         expected = {
@@ -136,6 +136,9 @@ TEST_ARTICLE_XML= """
                 <lname>Sanchez</lname>
               
               
+                <suffix>Mr</suffix>
+              
+              
                 <email>mauro_bepress@test.com</email>
               
             </author>
@@ -154,6 +157,9 @@ TEST_ARTICLE_XML= """
                 <lname>Byers</lname>
               
               
+                <suffix>Mr</suffix>
+              
+              
                 <email>andy_bepress@test.com</email>
               
             </author>
@@ -165,7 +171,7 @@ TEST_ARTICLE_XML= """
           
             <discipline>other keyword</discipline>
           
-        </disciplines
+        </disciplines>
         <abstract>This is the abstract of my test paper</abstract>
         <coverpage-url></coverpage-url>
         <fulltext-url></fulltext-url>
