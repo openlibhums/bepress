@@ -17,6 +17,7 @@ class TestImportArticle(TestCase):
         article = helpers.create_article(journal=self.journal_one)
         galley = add_youtube_galley(youtube_url, article)
         galley_contents = galley.file_content(dont_render=True)
-        expected = f'xlink:href="{youtube_url}"'
+        embed_url = youtube_url.replace("youtu.be", "youtube.com/embed")
+        expected = f'xlink:href="{embed_url}"'
         self.assertTrue(expected in str(galley_contents))
 

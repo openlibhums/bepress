@@ -416,16 +416,25 @@ def import_book_contributors(soup, book=None, chapter=None, seq_offset=0):
         except AttributeError:
             author_dict["email"] = None
 
-        sequence = seq_offset + i
-        contributor, created = book_models.Contributor.objects.get_or_create(
-            book=book,
-            defaults={"sequence": sequence},
+        order = seq_offset + i
+        contributor = book_models.Contributor.objects.filter(
+            contributorlink__book=book,
             **author_dict,
-        )
-        if created:
+        ).first()
+        if not contributor:
+            contributor = book_models.Contributor.objects.create(**author_dict)
+            book_models.ContributorLink.objects.create(
+                contributor=contributor,
+                book=book,
+                order=order,
+            )
             logger.info("Added author: %s to book: %s", contributor, book)
         if chapter:
-            chapter.contributors.add(contributor)
+            book_models.ContributorLink.objects.get_or_create(
+                contributor=contributor,
+                chapter=chapter,
+                defaults={"order": order},
+            )
         contributors.append(contributor)
     return contributors
 
